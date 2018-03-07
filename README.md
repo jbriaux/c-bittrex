@@ -9,6 +9,15 @@ The bot calculates Wilder RSI, Bechu RSI and MACD(14,28,9) but so far only shows
 
 The API is functional, the bot mode is still experimental.
 
+Todo
+-------------
+What's left to do:
+- add a thread scanning input for bot mode in order to be able to stop it properly (so far in bot mode, you need to kill with Ctrl+C)
+- add a makefile and automatic tests
+- run valgrind, I am pretty sure I forgot free calls
+- add a new call : --volumeonrange start_date end_date (buy and sell detailed volumes)
+- store bot orders in a database: in case of crash or program termination, the bot needs to be aware of its last state (waiting to buy or to sell and corresponding orders for each thread running)
+
 Installation
 -------------
 
