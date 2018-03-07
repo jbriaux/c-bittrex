@@ -4,14 +4,17 @@ Bittrex C API command line - use at your own risk.
 
 This is a C command line to use bittrex API. 
 
-It also contains an example of bot for minute trading based on RSI 14.
-The bot calculates Wilder RSI, Bechu RSI and MACD(14,28,9) but so far only shows what trades would be done but don't actually send the order (can be changed easily).
+It also contains an example of a bot for minute trading based on RSI 14.
+The bot calculates Wilder RSI, Bechu RSI and MACD(14,28,9) but so far only shows what trades would be done and don't actually send the order (can be changed easily).
 
 The API is functional, the bot mode is still experimental.
 
 Installation
 -------------
-Just compile with:
+
+You need to imort jansson library in directory "lib".
+
+Then just compile with:
 `gcc -W -Wall -lpthread -l curl -l jansson  market.c main.c bittrex.c trade.c account.c bot.c lib/hmac/hmac_sha2.c lib/hmac/sha2.c -o bittrex`
 
 I will add a Makefile later.
@@ -58,7 +61,7 @@ Account API Calls:
 "Special" calls
 -------------
 
-Some calls uses bittrex API V2. It may change in the future (not stable version of bittrex API, stable version is API V1.1) so could break.
+Some calls use bittrex API V2. It may change in the future (not stable version of bittrex API, stable version is API V1.1) so could break.
 ```
 GETTICKS (implemented and used by bot)
 TRADEBUY (not implemented yet)
@@ -77,7 +80,7 @@ I had a working version with RedHat implementation of hmac but was not sure abou
 And there were too many libraries to link (-lssl3 -lsmime3 -lnss3 -lnssutil3 -lplds4 -lplc4 -lnspr4).
 
 You may have noticed the -lpthread option, this is necessary for bot mode.
-In bot mode, the program starts by sorting markets by volume and select most intersting markets (tbh I need to change this part) and create one thread by selected market.
+In bot mode, the program starts by sorting markets by volume and select most intersting markets (tbh I need to change this part) and create one thread for each selected market.
 
 Init to do if you intend to develop for your own use
 -------------
@@ -90,12 +93,12 @@ bi->markets = getmarkets();
 bi->currencies = getcurrencies();
 ```
 
-Then you can do whatever you want (API replies are parsed and put in structures)
+Then you can do whatever you want (API replies are parsed and stored in structures)
 
 Important Structures
 -------------
 
-Hint: I don't know why I used double in the first time but I did, maybe I will change it someday.
+Hint: I don't know why I used doubles at first but I did, maybe I will change it someday.
 
 ```
 struct bittrex_info {
