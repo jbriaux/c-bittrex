@@ -12,9 +12,15 @@ The API is functional, the bot mode is still experimental.
 Installation
 -------------
 
-You need to imort jansson library in directory "lib".
+You need to have jansson installed on your OS (http://www.digip.org/jansson/)
 
+On CentOS: 
+```
+yum install jansson.x86_64
+Optional: jansson-devel.x86_64
+```
 Then just compile with:
+
 `gcc -W -Wall -lpthread -l curl -l jansson  market.c main.c bittrex.c trade.c account.c bot.c lib/hmac/hmac_sha2.c lib/hmac/sha2.c -o bittrex`
 
 I will add a Makefile later.
@@ -60,6 +66,13 @@ Account API Calls:
 ```
 "Special" calls
 -------------
+
+Withdraw call will ask input confirmation:
+```
+./bittrex -a ~/apikey -c XVG --withdraw 42.42,D6SRq71nRDurFvayU2tVxfWnbUGA3WvRmf
+You are about to send 42.420000 of XVG to D6SRq71nRDurFvayU2tVxfWnbUGA3WvRmf.
+Are you sure to proceed? (y/n)
+```
 
 Some calls use bittrex API V2. It may change in the future (not stable version of bittrex API, stable version is API V1.1) so could break.
 ```
