@@ -925,14 +925,16 @@ void free_market_history(struct market_history **mh) {
 		free(*tmp);
 		tmp++;
 	}
-	free(mh);
+	if (mh)
+		free(mh);
 }
 
 void free_market_summary(struct market_summary *ms) {
 	if (ms) {
-		free(ms->timestamp);
-		free(ms->ctm);
-		free(ms->type);
+		if (ms->timestamp)
+			free(ms->timestamp);
+		if (ms->ctm)
+			free(ms->ctm);
 		free(ms);
 	}
 }
@@ -944,7 +946,8 @@ void free_currencies(struct currency **currencies) {
 		free_currency(*tmp);
 		tmp++;
 	}
-	free(currencies);
+	if (currencies)
+		free(currencies);
 }
 
 void free_currency(struct currency *c) {
@@ -978,8 +981,8 @@ void free_order_book(struct orderbook *ob) {
 				free(*tmp);
 				tmp++;
 			}
-			free(ob);
 		}
+		free(ob);
 	}
 }
 

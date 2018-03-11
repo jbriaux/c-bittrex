@@ -54,7 +54,6 @@ struct market_summary {
 	struct tm *ctm; /* used for converting timestamp in time struct */
 	double last, low, high, basevolume, volume, bid, ask,prevday;
 	int openb, opens;
-	char *type;
 };
 
 /*
