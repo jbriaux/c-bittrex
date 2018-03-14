@@ -30,8 +30,9 @@ Optional: jansson-devel.x86_64
 ```
 Then just compile with:
 
-`gcc -W -Wall -lpthread -l curl -l jansson  market.c main.c bittrex.c trade.c account.c bot.c lib/hmac/hmac_sha2.c lib/hmac/sha2.c -o bittrex`
-
+```
+gcc -W -Wall -lpthread -l curl -l jansson market.c main.c bittrex.c trade.c account.c bot.c lib/hmac/hmac_sha2.c lib/hmac/sha2.c -g -o bittrex  `mysql_config --libs`
+```
 I will add a Makefile later.
 
 Bittrex API Documentation
