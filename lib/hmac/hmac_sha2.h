@@ -31,6 +31,13 @@
  * SUCH DAMAGE.
  */
 
+/*
+ * Modified in february 2018:
+ * - Kept only sha512 operations
+ * - main replaced by hmacstr(string to be encoded, key string)
+ *
+ */
+
 #ifndef HMAC_SHA2_H
 #define HMAC_SHA2_H
 

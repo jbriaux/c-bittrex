@@ -29,6 +29,7 @@
 #include <pthread.h>
 #include "lib/jansson/src/jansson.h"
 #include "bittrex.h"
+#include "bot.h"
 
 /*
  * Market history
@@ -69,7 +70,8 @@ struct market {
 	double mintradesize;
 	double high;
 	double low;
-	double basevolume;
+	double basevolume; // duplicate of ms->basevolume (to speed up qsort)
+	double volume;
 	struct market_history **mh;
 	struct market_summary *ms;
 	struct orderbook *ob;
@@ -185,7 +187,7 @@ int getorderbook(struct market *m, char *type);
 /*
  * Get available markets
  */
-struct market **getmarkets();
+int getmarkets(struct bittrex_info *bi);
 
 /*
  * return market if marketname is found in array markets
@@ -196,7 +198,6 @@ struct market *getmarket(struct market **markets, char *marketname);
  * Just do allocation and set pointers fields to NULL
  */
 struct market *new_market();
-
 
 
 /*
@@ -217,7 +218,6 @@ void free_ticks(struct tick **t);
  */
 int market_exists(struct market **mtab, char *marketname);
 
-
 /*
  * Print functions
  */
@@ -237,6 +237,6 @@ void printtick(struct tick *t);
  * Calculation of EMA 9 14 28 and MACD(14, 28, signal 9)
  *
  */
-void *indicators(void *ma);
+void *indicators(void *b);
 
 #endif

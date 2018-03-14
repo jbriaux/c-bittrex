@@ -323,7 +323,7 @@ int main(int argc, char *argv[]) {
 			bi->api = api;
 			break;
 		case 'm':
-			bi->markets = getmarkets();
+			getmarkets(bi);
 			market = getmarket(bi->markets, optarg);
 			if (!market) {
 				fprintf(stderr, "Invalid market specified: %s\n", optarg);
@@ -380,7 +380,7 @@ int main(int argc, char *argv[]) {
 	switch (action_flag) {
 	case 0:
 		if (strcmp(call, "--getmarkets") == 0) {
-			bi->markets = getmarkets();
+			getmarkets(bi);
 			printmarkets(bi->markets);
 		}
 		if (strcmp(call, "--getcurrencies") == 0) {
@@ -470,7 +470,7 @@ int main(int argc, char *argv[]) {
 		break;
 	case 9:	/* getorderhistory */
 		if (!market) // no market specified
-			bi->markets = getmarkets();
+			getmarkets(bi);
 		printorders(getorderhistory(bi, market));
 		break;
 	case 10: /* getwithdrawalhistory getdeposithistory */
@@ -485,11 +485,16 @@ int main(int argc, char *argv[]) {
 		break;
 	case 11: /* getopenorders */
 		if (!market)
-			bi->markets = getmarkets();
+			getmarkets(bi);
 		printorders(getopenorders(bi, market));
 	case 12: /* bot */
-		bi->markets = getmarkets();
-		//bi->currencies = getcurrencies();
+		getmarkets(bi);
+		if (!conn_init(bi)) {
+			fprintf(stderr, "Connection to MySQL failed\n. Exiting.\n");
+			exit(EPERM);
+		}
+		getmarketsummaries(bi);
+		bi->currencies = getcurrencies();
 		bot(bi);
 		break;
 	default:

@@ -450,14 +450,14 @@ int withdraw(struct bittrex_info *bi, struct currency *c, double quantity, char 
 	return 0;
 }
 
-static int tradelimit(struct bittrex_info *bi, struct market *m, double quantity, double rate, char *type) {
+static char *tradelimit(struct bittrex_info *bi, struct market *m, double quantity, double rate, char *type) {
 	json_t *result, *root, *tmp;
 	char *url, *nonce, *hmac, *s = NULL;
 	char bufq[42], bufr[42];
 
 	if (!api_is_valid(bi->api)) {
 		fprintf(stderr, "%s: bad parameter API\n", type);
-		return -1;
+		return NULL;
 	}
 
 	nonce = getnonce();
@@ -489,26 +489,26 @@ static int tradelimit(struct bittrex_info *bi, struct market *m, double quantity
 		fprintf(stderr, "%s: API call failed (%s)\n", url, type);
 		free(nonce);
 		free(url);
-		return -1;
+		return NULL;
 	}
 	result = json_object_get(root, "result");
 	tmp = json_object_get(result, "uuid");
 	printf("UUID: %s\n", (s=json_string_get(s,tmp)));
 
 	json_decref(root);
-	if (s) free(s);
+
 	free(nonce);
 	free(url);
 	free(hmac);
 
-	return 0;
+	return s;
 }
 
-int buylimit(struct bittrex_info *bi, struct market *m, double quantity, double rate) {
+char *buylimit(struct bittrex_info *bi, struct market *m, double quantity, double rate) {
 	return tradelimit(bi, m, quantity, rate, BUYLIMIT);
 }
 
-int selllimit(struct bittrex_info *bi, struct market *m, double quantity, double rate) {
+char *selllimit(struct bittrex_info *bi, struct market *m, double quantity, double rate) {
 	return tradelimit(bi, m, quantity, rate, SELLLIMIT);
 }
 
@@ -527,7 +527,7 @@ static void json_order_get(struct bittrex_info *bi, struct user_order *o, json_t
 	tmp = json_object_get(result, "Exchange");
 	if (tmp && json_string_value(tmp)) {
 		if (!bi->markets)
-			bi->markets = getmarkets();
+			getmarkets(bi);
 		o->market = getmarket(bi->markets, (char*)json_string_value(tmp));
 	}
 

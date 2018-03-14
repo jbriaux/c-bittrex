@@ -25,6 +25,8 @@
 #ifndef BITTREX_H
 #define BITTREX_H
 
+#include <mysql/mysql.h>
+
 #include "lib/jansson/src/jansson.h"
 
 // do not use (won't work anyway), this is for history
@@ -79,7 +81,11 @@
 #define GETWITHDRAWALHISTORY ACCOUNT_API_URL "getwithdrawalhistory?apikey="
 
 #define BUFFER_SIZE  (4096 * 1024)  /* 4MB  */
-#define MAX_ACTIVE_MARKETS 10 /* for the bot */
+#define MAX_ACTIVE_MARKETS 3 /* for the bot */
+
+#define MYSQL_PASSWD "Whr3PvCJ7cb"
+#define MYSQL_DB "bbot"
+#define MYSQL_USER "bbot_user"
 
 struct write_result
 {
@@ -91,9 +97,12 @@ struct bittrex_info {
 	struct market **markets;
 	struct currency **currencies;
 	struct api *api;
+	int nbmarkets;
+	MYSQL *connector;
 };
 
 struct bittrex_info *bittrex_info();
+int conn_init(struct bittrex_info *bi);
 
 /*
  * json custom getter

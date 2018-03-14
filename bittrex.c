@@ -60,11 +60,31 @@ struct bittrex_info *bittrex_info() {
 	bi->markets = NULL;
 	bi->currencies = NULL;
 	bi->api = NULL;
+	bi->connector = NULL;
+	bi->nbmarkets = 0;
 
 	// this call is not thread safe, must be called only once
 	curl_global_init(CURL_GLOBAL_ALL);
 
 	return bi;
+}
+
+int conn_init(struct bittrex_info *bi) {
+	if (!bi->connector) {
+		bi->connector = mysql_init(NULL);
+	} else {
+		fprintf(stderr, "MySQL already initiated\n");
+		return 0;
+	}
+	if (mysql_real_connect(bi->connector, "localhost", MYSQL_USER, MYSQL_PASSWD,
+			       MYSQL_DB, 0, NULL, 0) == NULL) {
+		fprintf(stderr, "%s\n", mysql_error(bi->connector));
+		mysql_close(bi->connector);
+		return 0;
+	} else {
+		printf("Connected to Database(OK)\n");
+	}
+	return 1;
 }
 
 void free_bi(struct bittrex_info *bi) {
@@ -300,7 +320,7 @@ json_t *api_call_sec(char *call, char *hmac) {
 	if(!reply)
 		return NULL;
 
-	printf("%s\n", reply);
+	//printf("%s\n", reply);
 	root = json_loads(reply, 0, &error);
 	free(reply);
 

@@ -40,8 +40,11 @@ enum condition_type { NONE, GREATER_THAN, LESS_THAN };
 struct trade {
 	struct market *m;
 	order_type type;
-	double quantity;
+	double quantity; // quantity without fee
+	double realqty; // real quantity baught (minus the fees, 0.25%)
 	double rate;
+	double fee;
+	double btcpaid;
 	time_type timeineffect;
 	condition_type condition;
 	int target;

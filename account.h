@@ -87,8 +87,8 @@ struct user_order **getopenorders(struct bittrex_info *bi, struct market *m);
 char *getdepositaddress(struct currency *c, struct api *apikey);
 int withdraw(struct bittrex_info *bi, struct currency *c, double quantity, char *destaddress, char *paymentid);
 int cancel(struct bittrex_info *bi, char *uuid);
-int buylimit(struct bittrex_info *bi, struct market *m, double quantity, double rate);
-int selllimit(struct bittrex_info *bi, struct market *m, double quantity, double rate);
+char *buylimit(struct bittrex_info *bi, struct market *m, double quantity, double rate);
+char *selllimit(struct bittrex_info *bi, struct market *m, double quantity, double rate);
 void getwithdrawalhistory(struct bittrex_info *bi, struct currency *c);
 
 void free_user_order(struct user_order *o);

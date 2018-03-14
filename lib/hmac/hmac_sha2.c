@@ -31,6 +31,14 @@
  * SUCH DAMAGE.
  */
 
+/*
+ * Modified in february 2018 (jb.riaux@gmail.com):
+ * - Kept only sha512 operations
+ * - main replaced by hmacstr(string to be encoded, key string)
+ *
+ */
+
+
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>

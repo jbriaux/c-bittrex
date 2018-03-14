@@ -26,7 +26,15 @@
 #define BOT_H
 
 #include "bittrex.h"
+#include "market.h"
+
+struct bittrex_bot {
+	struct bittrex_info *bi;
+	struct market *market;
+	int active_markets;
+};
 
 int bot(struct bittrex_info *bi);
+double quantity(struct bittrex_bot *bbot);
 
 #endif
