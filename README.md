@@ -21,7 +21,7 @@ What's left to do:
 Installation
 -------------
 
-You need to have jansson installed on your OS (http://www.digip.org/jansson/)
+You need to have jansson installed on your OS (http://www.digip.org/jansson/) and MySQL (server + client).
 
 On CentOS: 
 ```
