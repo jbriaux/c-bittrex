@@ -81,7 +81,7 @@ Examples of calls
 ./bittrex -a ~/apikey --market=BTC-XVG --buylimit 250,0.00000355
 UUID: f18598ea-c807-4bc0-a5a5-774e3cbf7ede
 ```
-* Invalid buy (minimum trade size not met):
+* Invalid buy (minimum trade size not met or bad api permission or anything that went wront):
 ```
 ./bittrex -a ~/apikey --market=BTC-XVG --buylimit 10,0.00000250
 Error proccessing request: https://bittrex.com/api/v1.1/market/buylimit?apikey=removed_from_example&market=BTC-XVG&quantity=10.00000000&rate=0.00000250&nonce=1521408865
