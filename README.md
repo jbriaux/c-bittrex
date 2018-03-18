@@ -13,10 +13,10 @@ Todo
 -------------
 What's left to do:
 - add a thread scanning input for bot mode in order to be able to stop it properly (so far in bot mode, you need to kill with Ctrl+C)
-- add a makefile and automatic tests
-- run valgrind, I am pretty sure I forgot free calls
+- add a makefile and automatic tests (tests added)
 - add a new call : --volumeonrange start_date end_date (buy and sell detailed volumes)
-- store bot orders in a database: in case of crash or program termination, the bot needs to be aware of its last state (waiting to buy or to sell and corresponding orders for each thread running)
+- store bot orders in a database: done 
+- In case of crash or program termination, the bot needs to be aware of its last state and resume (waiting to buy or to sell and corresponding orders for each thread running)
 
 Installation
 -------------
@@ -74,17 +74,65 @@ Account API Calls:
  ./bittrex --apikeyfile=path [--currency=coin] --getwithdrawalhistory
  ./bittrex --apikeyfile=path [--currency=coin] --getdeposithistory`
 ```
+Examples of calls
+-------------
+* Valid buy:
+```
+./bittrex -a ~/apikey --market=BTC-XVG --buylimit 250,0.00000355
+UUID: f18598ea-c807-4bc0-a5a5-774e3cbf7ede
+```
+* Invalid buy (minimum trade size not met):
+```
+./bittrex -a ~/apikey --market=BTC-XVG --buylimit 10,0.00000250
+Error proccessing request: https://bittrex.com/api/v1.1/market/buylimit?apikey=removed_from_example&market=BTC-XVG&quantity=10.00000000&rate=0.00000250&nonce=1521408865
+API replied: MIN_TRADE_REQUIREMENT_NOT_MET
+```
+* Valid sell:
+```
+./bittrex -a ~/apikey --market=BTC-XVG --selllimit 250,0.00000369
+UUID: 167bc9b7-11f7-403a-b6f5-50cf30b8e326
+```
+* GetOrder:
+```
+./bittrex -a ~/apikey --getorder 167bc9b7-11f7-403a-b6f5-50cf30b8e326
+UUID:                           167bc9b7-11f7-403a-b6f5-50cf30b8e326
+Exchange:                       BTC-XVG
+OrderType:                      LIMIT_SELL
+Quantity:                       250.00000000
+QuantityRemaining:              250.00000000
+Limit:                          0.000004
+Reserved:                       250.00000000
+ReservedRemaining:              0.00000000
+CommissionReserved:             0.00000000
+CommissionReservedRemaining:    0.00000000
+CommissionPaid:                 0.00000000
+Price:                          0.00000000
+PricePerUnit:                   0.00000000
+Opened:                         2018-03-18T21:59:52.08
+IsOpen:                         true
+CancelInitiated:                false
+ImmediateOrCancel:              false
+IsConditional:                  false
+Condition:                      NONE
+ConditionTarget:                (null)
+```
+* Cancel the order:
+```
+./bittrex -a ~/apikey --market=BTC-XVG --cancel 167bc9b7-11f7-403a-b6f5-50cf30b8e326
+Order: 167bc9b7-11f7-403a-b6f5-50cf30b8e326 canceled
+```
+
 "Special" calls
 -------------
 
-Withdraw call will ask input confirmation:
+* Withdraw call will ask input confirmation:
 ```
 ./bittrex -a ~/apikey -c XVG --withdraw 42.42,D6SRq71nRDurFvayU2tVxfWnbUGA3WvRmf
 You are about to send 42.420000 of XVG to D6SRq71nRDurFvayU2tVxfWnbUGA3WvRmf.
 Are you sure to proceed? (y/n)
 ```
 
-Some calls use bittrex API V2. It may change in the future (not stable version of bittrex API, stable version is API V1.1) so could break.
+* Some calls use bittrex API V2. It may change in the future (not stable version of bittrex API, stable version is API V1.1) so could break.
 ```
 GETTICKS (implemented and used by bot)
 TRADEBUY (not implemented yet)
