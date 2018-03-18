@@ -5,7 +5,7 @@ Bittrex C API command line - use at your own risk.
 This is a C command line to use bittrex API. 
 
 It also contains an example of a bot for minute trading based on RSI 14.
-The bot calculates Wilder RSI, Bechu RSI and MACD(14,28,9) but so far only shows what trades would be done and don't actually send the order (can be changed easily).
+The bot calculates Wilder RSI, Bechu RSI and MACD(14,28,9) but so far only shows what trades would be done and don't actually send the order.
 
 The API is functional, the bot mode is still experimental.
 
@@ -33,6 +33,9 @@ Then just compile with:
 ```
 gcc -W -Wall -lpthread -l curl -l jansson market.c main.c bittrex.c trade.c account.c bot.c lib/hmac/hmac_sha2.c lib/hmac/sha2.c -g -o bittrex  `mysql_config --libs`
 ```
+
+Setup the database by sourcing the sql file (consider to change the password in *installdb.sql* and *bittrex.h*)
+
 I will add a Makefile later.
 
 Bittrex API Documentation
