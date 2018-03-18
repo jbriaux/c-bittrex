@@ -121,6 +121,30 @@ ConditionTarget:                (null)
 ./bittrex -a ~/apikey --market=BTC-XVG --cancel 167bc9b7-11f7-403a-b6f5-50cf30b8e326
 Order: 167bc9b7-11f7-403a-b6f5-50cf30b8e326 canceled
 ```
+Check again with getorder, IsOpen should have changed to false
+```
+./bittrex -a ~/apikey --getorder 167bc9b7-11f7-403a-b6f5-50cf30b8e326
+UUID:                           167bc9b7-11f7-403a-b6f5-50cf30b8e326
+Exchange:                       BTC-XVG
+OrderType:                      LIMIT_SELL
+Quantity:                       250.00000000
+QuantityRemaining:              250.00000000
+Limit:                          0.000004
+Reserved:                       250.00000000
+ReservedRemaining:              0.00000000
+CommissionReserved:             0.00000000
+CommissionReservedRemaining:    0.00000000
+CommissionPaid:                 0.00000000
+Price:                          0.00000000
+PricePerUnit:                   0.00000000
+Opened:                         2018-03-18T21:59:52.08
+IsOpen:                         false
+CancelInitiated:                false
+ImmediateOrCancel:              false
+IsConditional:                  false
+Condition:                      NONE
+ConditionTarget:                (null)
+```
 
 "Special" calls
 -------------
