@@ -450,6 +450,9 @@ int withdraw(struct bittrex_info *bi, struct currency *c, double quantity, char 
 	return 0;
 }
 
+/*
+ * buylimit and selllimit api call
+ */
 static char *tradelimit(struct bittrex_info *bi, struct market *m, double quantity, double rate, char *type) {
 	json_t *result, *root, *tmp;
 	char *url, *nonce, *hmac, *s = NULL;
@@ -976,8 +979,11 @@ void free_balance(struct balance *b) {
 void free_api(struct api *a) {
 
 	if (a) {
-		free(a->key);
-		free(a->secret);
+		/*
+		 * key and secret are static for now
+		 */
+		//free(a->key);
+		//free(a->secret);
 		free(a);
 	}
 }

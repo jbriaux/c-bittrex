@@ -713,8 +713,8 @@ static int insert_order(MYSQL *connector, char *UUID, char *mname, double qty, d
 	char qtystr[32], ratestr[32];
 	int query_status;
 
-	sprintf(qtystr, "%f", qty);
-	sprintf(ratestr, "%f", rate);
+	sprintf(qtystr, "%.8f", qty);
+	sprintf(ratestr, "%.8f", rate);
 	query = malloc(strlen("INSERT INTO Orders (UUID,Market,Quantity,Rate,BotType,BotState) ") +
 		       strlen("VALUES (") +
 		       strlen(UUID) + 3 +
@@ -743,14 +743,20 @@ static int insert_order(MYSQL *connector, char *UUID, char *mname, double qty, d
 	return query_status;
 }
 
-static int processed_order(MYSQL *connector, char *UUID) {
+static int processed_order(MYSQL *connector, char *UUID, double gain) {
 	char *query;
+	char gainstr[18];
 	int query_status;
 
-	query = malloc(strlen("UPDATE Orders SET BotState = 'processed' WHERE UUID='") +
-		       strlen(UUID) + 3); // "'"+";"+"\0"
+	sprintf(gainstr, "%f", gain);
+	query = malloc(strlen("UPDATE Orders SET BotState = 'processed', Gain = '' WHERE UUID='") +
+		       strlen(gainstr) + strlen(UUID) + 3); // "'"+";"+"\0"
 	query[0] = '\0';
-	query = strcat(query, "UPDATE Orders SET BotState = 'processed' WHERE UUID='");
+	query = strcat(query, "UPDATE Orders SET BotState = 'processed',");
+	query = strcat(query, "Gain = '");
+	query = strcat(query, gainstr);
+	query = strcat(query, "'");
+	query = strcat(query, " WHERE UUID='");
 	query = strcat(query, UUID);
 	query = strcat(query, "';");
 	printf("%s\n", query);
@@ -807,8 +813,9 @@ void *indicators(void *b) {
 	double tmp = 0, tmprsi = 0;
 	int i = 0, j = 0, k = 0;
 	int previous = 0;
-	int testuuid = 424242;
+	double testuuid = 4242;
 	char testuuidstr[40];
+	double previousloss = 0;
 
 	// init tabs to 0
 	printf("Started bot for market: %s\n", m->marketname);
@@ -882,12 +889,15 @@ void *indicators(void *b) {
 				if (estimatedgain > 0) {
 					printf("SELL %s at %.8f, quantity: %.8f, Gain: %.8f\n", m->marketname, tmptick->last, buy->realqty, estimatedgain);
 					sell = new_trade(m, LIMIT, 1, tmptick->last, IMMEDIATE_OR_CANCEL, NONE, 0, SELL);
-					processed_order(bbot->bi->connector, (char*)testuuidstr);
+					processed_order(bbot->bi->connector, (char*)testuuidstr, estimatedgain);
 					testuuid++;
 					free(buy); buy = NULL;
 					free(sell); sell = NULL;
 				} else {
-					printf("Warning, RSI of %s over 70 but no opportunity found (loss: %.8f)\n", m->marketname, estimatedgain);
+					if (previousloss != estimatedgain) {
+						printf("Warning, RSI(tmp) of %s over 70 but no opportunity found (loss: %.8f)\n", m->marketname, estimatedgain);
+						previousloss = estimatedgain;
+					}
 				}
 			}
 			sleep(1);
@@ -923,7 +933,8 @@ void *indicators(void *b) {
 			printf("Market: %s, Wilder RSI: %.8f, Bechu RSI: %.8f, MACD: %.8f\n",
 			       m->marketname, m->rsi, m->brsi, m->macd);
 			// If rsi < 30 and we did not buy yet
-			if (m->rsi <= 30 && !buy) {
+			// rsi != 0 in case api replied crap at init
+			if (m->rsi <= 30 && m->rsi != 0 && !buy) {
 				last = getticker(m);
 				if (last) {
 					// btc available divided by the number of active bot markets
@@ -933,14 +944,15 @@ void *indicators(void *b) {
 					// order information
 					printf("BUY %s at %.8f, quantity: %.8f (BTC: %.8f), fees: %.8f\n", m->marketname, last->last, qty, btcqty, (0.25/100) * qty * last->last);
 					/* this instanciate a trade struct but it does not buy for real (API V2 not implemented) */
-					/* this is handy as we can use trade struct fields */
+					/* but we can use trade struct fields */
 					buy = new_trade(m, LIMIT, qty, t[0]->close, IMMEDIATE_OR_CANCEL, NONE, 0, BUY);
 					buy->btcpaid = btcqty;
 					//estimated fee (0.25%)
 					buy->fee = (0.25/100) * qty * last->last;
 					buy->realqty = qty - buy->fee;
-					// for test, to be removed
-					sprintf(testuuidstr, "%d", testuuid);
+					// trick for test (no dup uuid between threads)
+					testuuid += last->last;
+					sprintf(testuuidstr, "%.8f", testuuid);
 					//uuid = buylimit(bi, m, qty, last->last);
 					/* fixme : add getorder and process reply then update buy struct fields or replace buy struct by order struct? */
 					insert_order(bbot->bi->connector, testuuidstr, m->marketname, buy->realqty, last->last, "buy");
@@ -950,15 +962,17 @@ void *indicators(void *b) {
 			// this sell is not probable (we sell mostly in first loop when RSI is refreshed within a minute)
 			if (m->rsi >= 70 && buy) {
 				last = getticker(m);
-				if (last && (buy->quantity * last->last > buy->quantity * buy->rate) &&
-				    (buy->quantity * last->last - buy->quantity * buy->rate) >
-				    0.25/100*(buy->quantity * buy->rate)) {
-					//printf("SELL %s at %.8f OR\n", m->marketname, t[0]->close);
-					printf("SELL %s at %.8f OR\n", m->marketname, last->last);
-					processed_order(bbot->bi->connector, (char*)testuuidstr);
+				double sellminusfee = (last->last * buy->realqty) * ( 1 - 0.25/100);
+				double estimatedgain = sellminusfee - buy->btcpaid;
+				if (estimatedgain > 0) {
+					printf("SELL %s at %.8f, quantity: %.8f, Gain: %.8f\n", m->marketname, last->last, buy->realqty, estimatedgain);
+					sell = new_trade(m, LIMIT, 1, last->last, IMMEDIATE_OR_CANCEL, NONE, 0, SELL);
+					processed_order(bbot->bi->connector, (char*)testuuidstr, estimatedgain);
 					testuuid++;
 					free(buy); buy = NULL;
-					free(last); last = NULL;
+					free(sell); sell = NULL;
+				} else {
+					printf("Warning, RSI of %s over 70 but no opportunity found (loss: %.8f)\n", m->marketname, estimatedgain);
 				}
 			}
 			free_ticks(t);

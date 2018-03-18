@@ -81,7 +81,7 @@
 #define GETWITHDRAWALHISTORY ACCOUNT_API_URL "getwithdrawalhistory?apikey="
 
 #define BUFFER_SIZE  (4096 * 1024)  /* 4MB  */
-#define MAX_ACTIVE_MARKETS 3 /* for the bot */
+#define MAX_ACTIVE_MARKETS 5 /* for the bot */
 
 #define MYSQL_PASSWD "Whr3PvCJ7cb"
 #define MYSQL_DB "bbot"
