@@ -25,6 +25,7 @@
 #include <curl/curl.h>
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
 
 #include "lib/jansson/src/jansson.h"
 #include "bittrex.h"
@@ -62,6 +63,7 @@ struct bittrex_info *bittrex_info() {
 	bi->api = NULL;
 	bi->connector = NULL;
 	bi->nbmarkets = 0;
+	pthread_mutex_init(&(bi->sql_lock), NULL);
 
 	// this call is not thread safe, must be called only once
 	curl_global_init(CURL_GLOBAL_ALL);

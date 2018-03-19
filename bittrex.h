@@ -99,6 +99,9 @@ struct bittrex_info {
 	struct api *api;
 	int nbmarkets;
 	MYSQL *connector;
+	/* The client library is almost (lol) thread-safe */
+	/* so let's put a lock so we avoid random behavior */
+	pthread_mutex_t sql_lock;
 };
 
 struct bittrex_info *bittrex_info();

@@ -708,31 +708,34 @@ static void printtab(double *tab, int size) {
  * the quantity put in base is the real quantity baught without the fees
  * I buy 100BTC, we insert in base 99.75
  */
-static int insert_order(MYSQL *connector, char *UUID, char *mname, double qty, double rate, char *type) {
+static int insert_order(MYSQL *connector, char *UUID, char *mname, double qty, double rate, double btcpaid) {
 	char *query;
-	char qtystr[32], ratestr[32];
+	char qtystr[32], ratestr[32], btcpaidstr[32];
 	int query_status;
 
 	sprintf(qtystr, "%.8f", qty);
 	sprintf(ratestr, "%.8f", rate);
-	query = malloc(strlen("INSERT INTO Orders (UUID,Market,Quantity,Rate,BotType,BotState) ") +
+	sprintf(btcpaidstr, "%.8f", btcpaid);
+	query = malloc(strlen("INSERT INTO Orders (UUID,Market,Quantity,Rate,BotType,BotState,BtcPaid) ") +
 		       strlen("VALUES (") +
 		       strlen(UUID) + 3 +
 		       strlen(mname) + 3 +
 		       strlen(qtystr) + 3 +
 		       strlen(ratestr) + 3 +
-		       strlen(type) + 3 +
+		       strlen("'buy'") +
 		       strlen("pending") + 3 +
+		       strlen(btcpaidstr) + 3 +
 		       strlen(");") + 1);
 	query[0] = '\0';
-	query = strcat(query, "INSERT INTO Orders (UUID,Market,Quantity,Rate,BotType,BotState) ");
+	query = strcat(query, "INSERT INTO Orders (UUID,Market,Quantity,Rate,BotType,BotState,BtcPaid) ");
 	query = strcat(query, "VALUES (");
 	query = strcat(query, "'"); query = strcat(query, UUID); query = strcat(query, "',");;
 	query = strcat(query, "'"); query = strcat(query, mname); query = strcat(query, "',");
 	query = strcat(query, "'"); query = strcat(query, qtystr); query = strcat(query, "',");
 	query = strcat(query, "'"); query = strcat(query, ratestr); query = strcat(query, "',");
-	query = strcat(query, "'"); query = strcat(query, type); query = strcat(query, "',");
-	query = strcat(query, "'pending'");
+	query = strcat(query, "'buy',");
+	query = strcat(query, "'pending',");
+	query = strcat(query, "'"); query = strcat(query, btcpaidstr); query = strcat(query, "'");
 	query = strcat(query, ");");
 
 	query_status = mysql_query(connector, query);
@@ -748,7 +751,7 @@ static int processed_order(MYSQL *connector, char *UUID, double gain) {
 	char gainstr[18];
 	int query_status;
 
-	sprintf(gainstr, "%f", gain);
+	sprintf(gainstr, "%.8f", gain);
 	query = malloc(strlen("UPDATE Orders SET BotState = 'processed', Gain = '' WHERE UUID='") +
 		       strlen(gainstr) + strlen(UUID) + 3); // "'"+";"+"\0"
 	query[0] = '\0';
@@ -767,6 +770,65 @@ static int processed_order(MYSQL *connector, char *UUID, double gain) {
 	}
 	free(query);
 	return query_status;
+}
+
+/*
+ * For resuming the bot.
+ * If an order is not marked as processed in database, returns it otherwise return NULL
+ * 1 thread = 1 order max opened so number of row if any is 1
+ */
+static struct trade *lasttransaction(MYSQL *connector, struct market *m) {
+	char *query, *buffer;
+	int query_status;
+	double qty, rate, btcpaid;
+	MYSQL_RES *result;
+	unsigned long *len;
+	struct trade *t = NULL;
+
+	query = malloc(strlen("SELECT * FROM Orders WHERE BotState = 'pending' AND Market = '';") +
+		       strlen(m->marketname) + 1 );
+
+	query[0] = '\0';
+	query = strcat(query, "SELECT * FROM Orders WHERE BotState = 'pending' AND Market = '");
+	query = strcat(query, m->marketname);
+	query = strcat(query, "';");
+
+	query_status = mysql_query(connector, query);
+	if (query_status != 0)
+		return NULL;
+
+	result = mysql_store_result(connector);
+
+	if (result && mysql_num_rows(result) == 1) {
+		MYSQL_ROW row;
+
+		buffer = malloc(42 * sizeof(char));
+		row = mysql_fetch_row(result);
+		len = mysql_fetch_lengths(result);
+
+		buffer[0] = '\0';
+		strncat(buffer, row[3], len[3] + 1);
+		sscanf(buffer, "%lf", &qty);
+
+		buffer[0] = '\0';
+		strncat(buffer, row[4], len[4] + 1);
+		sscanf(buffer, "%lf", &rate);
+
+		buffer[0] = '\0';
+		strncat(buffer, row[7], len[7] + 1);
+		sscanf(buffer, "%lf", &btcpaid);
+
+		t = new_trade(m, LIMIT, qty, rate, IMMEDIATE_OR_CANCEL, NONE, 0, BUY);
+
+		t->realqty = qty;
+		t->btcpaid = btcpaid;
+		t->fee = ((0.25/100) * t->realqty * rate)/(1-(0.25/100*rate));
+		free(buffer);
+	}
+	if (result)
+		mysql_free_result(result);
+	free(query);
+	return t;
 }
 
 // fixme add stop loss option
@@ -816,6 +878,11 @@ void *indicators(void *b) {
 	double testuuid = 4242;
 	char testuuidstr[40];
 	double previousloss = 0;
+
+	// look for past unprocessed trades
+	pthread_mutex_lock(&(bbot->bi->sql_lock));
+	buy = lasttransaction(bbot->bi->connector, m);
+	pthread_mutex_unlock(&(bbot->bi->sql_lock));
 
 	// init tabs to 0
 	printf("Started bot for market: %s\n", m->marketname);
@@ -955,7 +1022,7 @@ void *indicators(void *b) {
 					sprintf(testuuidstr, "%.8f", testuuid);
 					//uuid = buylimit(bi, m, qty, last->last);
 					/* fixme : add getorder and process reply then update buy struct fields or replace buy struct by order struct? */
-					insert_order(bbot->bi->connector, testuuidstr, m->marketname, buy->realqty, last->last, "buy");
+					insert_order(bbot->bi->connector, testuuidstr, m->marketname, buy->realqty, last->last, buy->btcpaid);
 					free(last); last = NULL;
 				}
 			}
