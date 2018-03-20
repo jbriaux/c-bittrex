@@ -99,11 +99,11 @@ struct bittrex_info {
 	struct api *api;
 	int nbmarkets;
 	MYSQL *connector;
-	/* The client library is almost (lol) thread-safe */
-	/* so let's put a lock so we avoid random behavior */
-	pthread_mutex_t sql_lock;
+	/* Put a lock for mysql call and API call (lastcall_t and lastcall modified by different threads */
+	pthread_mutex_t bi_lock;
 	/* store the last api call to limit the call rate to 1/s max */
-	time_t last;
+	time_t lastcall_t;
+	char *lastcall;
 };
 
 struct bittrex_info *bittrex_info();
@@ -119,8 +119,8 @@ char *json_string_get(char *dest, json_t *tmp);
  * fixme : do a single api call function
  */
 char *request(const char *url);
-json_t *api_call(struct bittrex_info *bi, char *call);
-json_t *api_call_sec(struct bittrex_info *bi, char *call, char *hmac);
+json_t *api_call(struct bittrex_info *bi, char *call, char *rootcall);
+json_t *api_call_sec(struct bittrex_info *bi, char *call, char *hmac, char *rootcall);
 char *getnonce();
 
 /*

@@ -83,7 +83,7 @@ struct balance *getbalance(struct bittrex_info *bi, struct currency *c, struct a
 	url = strcat(url, nonce);
 	hmac = hmacstr(api->secret, url);
 
-	root = api_call_sec(bi, url, hmac);
+	root = api_call_sec(bi, url, hmac, GETBALANCE);
 	if (!root) {
 		fprintf(stderr, "getbalance: API call failed (%s)\n", url);
 		free(url);
@@ -142,7 +142,7 @@ struct balance **getbalances(struct bittrex_info *bi, struct api *api) {
 	url = strcat(url, nonce);
 	hmac = hmacstr(api->secret, url);
 
-	root = api_call_sec(bi, url, hmac);
+	root = api_call_sec(bi, url, hmac, GETBALANCES);
 	if (!root) {
 		fprintf(stderr, "getbalances: API call failed (%s)\n", url);
 		free(url);
@@ -233,7 +233,7 @@ struct deposit **getdeposithistory(struct bittrex_info *bi, struct currency *c) 
 	}
 	hmac = hmacstr(bi->api->secret, url);
 
-	root = api_call_sec(bi, url, hmac);
+	root = api_call_sec(bi, url, hmac, GETDEPOSITHISTORY);
 	if (!root) {
 		fprintf(stderr, "getdeposithistory: API call failed (%s)\n", url);
 		free(url);
@@ -309,7 +309,7 @@ char *getdepositaddress(struct bittrex_info *bi, struct currency *c, struct api 
 	url = strcat(url, nonce);
 	hmac = hmacstr(api->secret, url);
 
-	root = api_call_sec(bi, url, hmac);
+	root = api_call_sec(bi, url, hmac, GETDEPOSITADDRESS);
 	if (!root) {
 		fprintf(stderr, "getdepositaddress: API call failed (%s)\n", url);
 		free(url);
@@ -366,7 +366,7 @@ int cancel(struct bittrex_info *bi, char *uuid) {
 
 	hmac = hmacstr(bi->api->secret, url);
 
-	root = api_call_sec(bi, url, hmac);
+	root = api_call_sec(bi, url, hmac, CANCELORDER);
 	if (!root) {
 		fprintf(stderr, "cancel: API call failed (%s)\n", url);
 		free(url);
@@ -430,7 +430,7 @@ int withdraw(struct bittrex_info *bi, struct currency *c, double quantity, char 
 
 	hmac = hmacstr(bi->api->secret, url);
 
-	root = api_call_sec(bi, url, hmac);
+	root = api_call_sec(bi, url, hmac, WITHDRAW);
 	if (!root) {
 		fprintf(stderr, "withdraw: API call failed (%s)\n", url);
 		free(nonce);
@@ -487,7 +487,7 @@ static char *tradelimit(struct bittrex_info *bi, struct market *m, double quanti
 
 	hmac = hmacstr(bi->api->secret, url);
 
-	root = api_call_sec(bi, url, hmac);
+	root = api_call_sec(bi, url, hmac, type);
 	if (!root) {
 		fprintf(stderr, "%s: API call failed (%s)\n", url, type);
 		free(nonce);
@@ -624,7 +624,7 @@ struct user_order **getorderhistory(struct bittrex_info *bi, struct market *mark
 	}
 	hmac = hmacstr(bi->api->secret, url);
 
-	root = api_call_sec(bi, url, hmac);
+	root = api_call_sec(bi, url, hmac, GETORDERHISTORY);
 	if (!root) {
 		fprintf(stderr, "getorderhistory: API call failed (%s)\n", url);
 		free(url);
@@ -733,7 +733,7 @@ struct user_order **getopenorders(struct bittrex_info *bi, struct market *market
 
 	hmac = hmacstr(bi->api->secret, url);
 
-	root = api_call_sec(bi, url, hmac);
+	root = api_call_sec(bi, url, hmac, GETOPENORDERS);
 	if (!root) {
 		fprintf(stderr, "getopenorders: API call failed (%s)\n", url);
 		free(url);
@@ -835,7 +835,7 @@ struct user_order *getorder(struct bittrex_info *bi, char *uuid){
 	url = strcat(url, nonce);
 	hmac = hmacstr(bi->api->secret, url);
 
-	root = api_call_sec(bi, url, hmac);
+	root = api_call_sec(bi, url, hmac, GETORDER);
 	if (!root) {
 		fprintf(stderr, "getorder: API call failed (%s)\n", url);
 		free(url);
@@ -891,7 +891,7 @@ void getwithdrawalhistory(struct bittrex_info *bi, struct currency *c) {
 
 	hmac = hmacstr(bi->api->secret, url);
 
-	root = api_call_sec(bi, url, hmac);
+	root = api_call_sec(bi, url, hmac, GETWITHDRAWALHISTORY);
 	if (!root) {
 		fprintf(stderr, "getwithdrawalhistory: API call failed (%s)\n", url);
 		free(url);

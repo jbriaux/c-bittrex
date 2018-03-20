@@ -26,6 +26,7 @@
 #include <string.h>
 #include <time.h>
 #include <pthread.h>
+#include <unistd.h>
 
 #include "lib/jansson/src/jansson.h"
 #include "bittrex.h"
@@ -63,7 +64,11 @@ struct bittrex_info *bittrex_info() {
 	bi->api = NULL;
 	bi->connector = NULL;
 	bi->nbmarkets = 0;
-	pthread_mutex_init(&(bi->sql_lock), NULL);
+	bi->lastcall_t = 0;
+	bi->lastcall = malloc(strlen("none") + 1);
+	strcpy(bi->lastcall, "none");
+
+	pthread_mutex_init(&(bi->bi_lock), NULL);
 
 	// this call is not thread safe, must be called only once
 	curl_global_init(CURL_GLOBAL_ALL);
@@ -253,6 +258,8 @@ error:
  * Check success field
  * return null on error or ptr on json_t result
  *
+ * Limit API call to 1/s (per call type)
+ *
  * Sometimes API replies with success true but
  * result array or string is empty.
  * We replay the call until it returns normal output.
@@ -260,12 +267,26 @@ error:
  * if API keeps replying crap.
  *
  */
-json_t *api_call(struct bittrex_info *bi, char *call) {
+json_t *api_call(struct bittrex_info *bi, char *call, char *rootcall) {
 	json_t *root, *result, *tmp;
 	json_error_t error;
 	char *reply;
 
+
+	if (!bi->lastcall_t)
+		bi->lastcall_t = time(NULL);
+
+	if (strcmp(rootcall, bi->lastcall) == 0 && difftime(time(NULL), bi->lastcall_t) <= 1)
+		sleep(1);
+
 	reply = request(call);
+
+	pthread_mutex_lock(&(bi->bi_lock));
+	bi->lastcall_t = time(NULL);
+	free(bi->lastcall);
+	bi->lastcall = malloc(strlen(rootcall) + 1);
+	strcpy(bi->lastcall, rootcall);
+	pthread_mutex_unlock(&(bi->bi_lock));
 
 	if(!reply)
 		return NULL;
@@ -293,13 +314,13 @@ json_t *api_call(struct bittrex_info *bi, char *call) {
 		fprintf(stderr, "Error proccessing request: %s, result field(array) empty. ", call);
 		fprintf(stderr, "Retrying\n");
 		json_decref(root);
-		return api_call(bi, call);
+		return api_call(bi, call, rootcall);
 	}
 	if ((json_typeof(result) == JSON_STRING) && (strlen(json_string_value(result)) == 0)) {
 		fprintf(stderr, "Error proccessing request: %s, result field(string) empty. ", call);
 		fprintf(stderr, "Retrying\n");
 		json_decref(root);
-		return api_call(bi, call);
+		return api_call(bi, call, rootcall);
 	}
 
 	return root;
@@ -312,12 +333,26 @@ json_t *api_call(struct bittrex_info *bi, char *call) {
  *
  * Unlike api_call() we do not replay call on failures.
  */
-json_t *api_call_sec(struct bittrex_info *bi, char *call, char *hmac) {
+json_t *api_call_sec(struct bittrex_info *bi, char *call, char *hmac, char *rootcall) {
 	json_t *root, *result, *tmp;
 	json_error_t error;
 	char *reply;
 
+	if (!bi->lastcall_t)
+		bi->lastcall_t = time(NULL);
+
+	if (strcmp(rootcall, bi->lastcall) == 0 && difftime(time(NULL), bi->lastcall_t) <= 1)
+		sleep(1);
+
 	reply = apikey_request(call, hmac);
+
+	pthread_mutex_lock(&(bi->bi_lock));
+	bi->lastcall_t = time(NULL);
+	free(bi->lastcall);
+	bi->lastcall = malloc(strlen(rootcall) + 1);
+	strcpy(bi->lastcall, rootcall);
+	pthread_mutex_unlock(&(bi->bi_lock));
+
 
 	if(!reply)
 		return NULL;

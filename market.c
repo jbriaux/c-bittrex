@@ -89,7 +89,7 @@ int getmarkets(struct bittrex_info *bi) {
 	struct market *m = NULL;
 
 
-	root = api_call(bi, GETMARKETS);
+	root = api_call(bi, GETMARKETS, GETMARKETS);
 	if (!root)
 		return 0;
 
@@ -164,7 +164,7 @@ struct ticker *getticker(struct bittrex_info *bi, struct market *m) {
 	url = strcat(url, GETTICKER);
 	url = strcat(url, m->marketname);
 
-	root = api_call(bi, url);
+	root = api_call(bi, url, GETTICKER);
 	if (!root)
 		return NULL;
 	result = json_object_get(root,"result");
@@ -204,7 +204,7 @@ struct tick **getticks(struct bittrex_info *bi, struct market *m, char *interval
 	url = strcat(url, "&tickInterval=");
 	url = strcat(url, interval);
 
-	root = api_call(bi, url);
+	root = api_call(bi, url, GETTICKS);
 	if (!root)
 		return NULL;
 
@@ -255,7 +255,7 @@ struct currency **getcurrencies(struct bittrex_info *bi) {
 	json_t *root, *result, *tmp, *raw;
 	int size=0, i;
 
-	root = api_call(bi, GETCURRENCIES);
+	root = api_call(bi, GETCURRENCIES, GETCURRENCIES);
 	if (!root)
 		return NULL;
 
@@ -309,7 +309,7 @@ int getmarketsummaries(struct bittrex_info *bi){
 	int i = 0;
 	json_t *result, *raw, *market_name, *root, *tmp;
 
-	root = api_call(bi, GETMARKETSUMMARIES);
+	root = api_call(bi, GETMARKETSUMMARIES, GETMARKETSUMMARIES);
 	if (!root)
 		return -1;
 
@@ -409,7 +409,7 @@ int getmarkethistory(struct bittrex_info *bi, struct market *m) {
 	url = strcat(url, GETMARKETHISTORY);
 	url = strcat(url, m->marketname);
 
-	root = api_call(bi, url);
+	root = api_call(bi, url, GETMARKETHISTORY);
 	if (!root)
 		return -1;
 
@@ -494,7 +494,7 @@ int getmarketsummary(struct bittrex_info *bi, struct market *m) {
 	url = strcat(url, GETMARKETSUMMARY);
 	url = strcat(url, m->marketname);
 
-	root = api_call(bi, url);
+	root = api_call(bi, url, GETMARKETSUMMARY);
 	if (!root)
 		return -1;
 
@@ -612,7 +612,7 @@ int getorderbook(struct bittrex_info *bi, struct market *m, char *type) {
 	url = strcat(url, m->marketname);
 	url = strcat(url, "&type=");
 	url = strcat(url, type);
-	root = api_call(bi, url);
+	root = api_call(bi, url, GETORDERBOOK);
 	if (!root)
 		return -1;
 

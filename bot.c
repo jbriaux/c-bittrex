@@ -313,9 +313,9 @@ void *runbot(void *b) {
 	double previousloss = 0;
 
 	// look for past unprocessed trades
-	pthread_mutex_lock(&(bbot->bi->sql_lock));
+	pthread_mutex_lock(&(bbot->bi->bi_lock));
 	buy = lasttransaction(bbot->bi->connector, m);
-	pthread_mutex_unlock(&(bbot->bi->sql_lock));
+	pthread_mutex_unlock(&(bbot->bi->bi_lock));
 
 	// init tabs to 0
 	printf("Started bot for market: %s\n", m->marketname);
