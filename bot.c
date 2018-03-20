@@ -52,11 +52,11 @@ double quantity(struct bittrex_bot *bbot) {
 int bot(struct bittrex_info *bi) {
 	struct bittrex_bot **bbot;
 	struct market **worthm;
-	struct tick **ticks;
-	pthread_t ind[MAX_ACTIVE_MARKETS], abort;
+	/* struct tick **ticks; */
+	pthread_t ind[MAX_ACTIVE_MARKETS]; /* abort; */
 	int i, j = 0, nbm = 0;
-	double diffh, diffd;
-	char c1, c2;
+	/* double diffh, diffd; */
+	/* char c1, c2; */
 
 	worthm = malloc((MAX_ACTIVE_MARKETS+1) * sizeof(struct market*));
 	printf("checking market performance of last day and hour (markets selection), using BTCs markets only\n");
@@ -131,16 +131,6 @@ static void tabinit(double *tab, int size) {
 
 	for (i=0; i < size; i++) {
 		tab[i] = 0;
-	}
-}
-
-// for debug purposes
-static void printtab(double *tab, int size) {
-	int i = 0;
-
-	printf("-----------------\n");
-	for (i=0; i < size; i++) {
-		printf("tab[%d]: %.8f\n", i, tab[i]);
 	}
 }
 
@@ -296,6 +286,7 @@ static struct trade *lasttransaction(MYSQL *connector, struct market *m) {
  *   mmd: moving average of value decrease
  *        mmd[i] = (dec[i-1] + mmd[i-1]*(14-1))/14
  *   formula used:  1-(1/(1+mmi[i]/mmd[i]))
+ * EMA = exponential moving average
  */
 void *runbot(void *b) {
 	struct bittrex_bot *bbot = (struct bittrex_bot *)b;
@@ -370,124 +361,151 @@ void *runbot(void *b) {
 	free_ticks(ticks);
 
 	i = 0;
-	// poll every minutes
+	/*
+	 * Poll every minutes, warning: loop never ends.
+	 */
 	while (i < 15) {
 		begining = time(NULL);
-		// this loop polls ~1/s api for tick
+		previous = (i + 13) % 14;
+		/*
+		 * This loop polls ~1/s api for tick
+		 * We sell in these condition:
+		 * - RSI > 70 and gain > 0
+		 * - RSI not > 70 but gain > 1%
+		 */
 		while (difftime(time(NULL), begining) < 60) {
-			tmptick = getticker(bbot->bi, m);
+			/*
+			 * Free previous tick
+			 * We keep the last tick in case getticker fails after this loop
+			 */
 			if (tmptick) {
-				previous = (i + 13) % 14; // 13 when i = 0
+				free(tmptick);
+				tmptick = NULL;
+			}
+			if ((tmptick = getticker(bbot->bi, m))) {
 				tmp = tmptick->last - val[previous];
-				if (tmp >= 0) { //inc
+				if (tmp >= 0) {
 					inc[previous] = tmp;
 					dec[previous] = 0;
-				} else { // dec
+				} else {
 					inc[previous] = 0;
 					dec[previous] = -1*tmp;
 				}
 				mmi[i] = (inc[previous] + mmi[previous]*(13.0))/14.0;
 				mmd[i] = (dec[previous] + mmd[previous]*(13.0))/14.0;
-				free(tmptick);
-			}
-			tmprsi =  100 * (1.0-(1.0/(1.0+mmi[i]/mmd[i])));
-//			printf(" %f \n", tmprsi);
-			if (tmprsi  >= 70 && buy) {
-				double sellminusfee = (tmptick->last * buy->realqty) * ( 1 - 0.25/100);
-				double estimatedgain = sellminusfee - buy->btcpaid;
-				if (estimatedgain > 0) {
-					printf("SELL %s at %.8f, quantity: %.8f, Gain: %.8f\n", m->marketname, tmptick->last, buy->realqty, estimatedgain);
-					sell = new_trade(m, LIMIT, 1, tmptick->last, IMMEDIATE_OR_CANCEL, NONE, 0, SELL);
-					processed_order(bbot->bi->connector, (char*)testuuidstr, estimatedgain);
-					testuuid++;
-					free(buy); buy = NULL;
-					free(sell); sell = NULL;
-				} else {
-					if (previousloss != estimatedgain) {
-						printf("Warning, RSI(tmp) of %s over 70 but no opportunity found (loss: %.8f)\n", m->marketname, estimatedgain);
-						previousloss = estimatedgain;
+				tmprsi =  100 * (1.0-(1.0/(1.0+mmi[i]/mmd[i])));
+				if (buy) {
+					double sellminusfee = (tmptick->last * buy->realqty) * ( 1 - 0.25/100);
+					double estimatedgain = sellminusfee - buy->btcpaid;
+					if ((estimatedgain > 0 && tmprsi >= 70) || (estimatedgain >= buy->btcpaid / 100)) {
+						printf("SELL %s at %.8f, quantity: %.8f, Gain (if sold): %.8f\n", m->marketname, tmptick->last, buy->realqty, estimatedgain);
+						sell = new_trade(m, LIMIT, 1, tmptick->last, IMMEDIATE_OR_CANCEL, NONE, 0, SELL);
+						//uuid = selllimit(bi, m, buy->realqty, tmptick->last);
+						processed_order(bbot->bi->connector, (char*)testuuidstr, estimatedgain);
+						testuuid++;
+						free(buy); buy = NULL;
+						free(sell); sell = NULL;
+					} else {
+						if (previousloss != estimatedgain && tmprsi >= 70) {
+							printf("Warning, RSI(tmp) of %s over 70 but no opportunity found (loss: %.8f)\n", m->marketname, estimatedgain);
+							previousloss = estimatedgain;
+						}
 					}
 				}
+				sleep(1);
 			}
-			sleep(1);
 		}
 		t = getticks(bbot->bi, m, "oneMin", 1);
 		if (t && t[0]) {
 			val[i] = t[0]->close;
-			previous = (i + 13) % 14; // 13 when i = 0
-			tmp = val[i] - val[previous];
-			if (tmp >= 0) { //inc
-				inc[previous] = tmp;
-				dec[previous] = 0;
-			} else { // dec
-				inc[previous] = 0;
-				dec[previous] = -1*tmp;
+			free_ticks(t);
+			t = NULL;
+		} else {
+			val[i] = tmptick->last;
+		}
+		tmp = val[i] - val[previous];
+		if (tmp >= 0) {
+			inc[previous] = tmp;
+			dec[previous] = 0;
+		} else {
+			inc[previous] = 0;
+			dec[previous] = -1*tmp;
 			}
-			mmi[i] = (inc[previous] + mmi[previous]*(13.0))/14.0;
-			mmd[i] = (dec[previous] + mmd[previous]*(13.0))/14.0;
-			ema14[i] = (val[i] - ema14[previous])*w14 + ema14[previous];
-			if (j == 0)
-				ema28[j] = (val[i] - ema28[27])*w28 + ema28[27];
-			if (j >= 1)
-				ema28[j] = (val[i] - ema28[j-1])*w28 + ema28[j-1];
-			if (k == 0)
-				ema9[k] = (val[i] - ema9[8])*w9 + ema9[8];
-			if (k >= 1)
+		mmi[i] = (inc[previous] + mmi[previous]*(13.0))/14.0;
+		mmd[i] = (dec[previous] + mmd[previous]*(13.0))/14.0;
+		ema14[i] = (val[i] - ema14[previous])*w14 + ema14[previous];
+		if (j == 0)
+			ema28[j] = (val[i] - ema28[27])*w28 + ema28[27];
+		if (j >= 1)
+			ema28[j] = (val[i] - ema28[j-1])*w28 + ema28[j-1];
+		if (k == 0)
+			ema9[k] = (val[i] - ema9[8])*w9 + ema9[8];
+		if (k >= 1)
 				ema9[k] = (val[i] - ema9[k-1])*w9 + ema9[k-1];
-			pthread_mutex_lock(&(m->indicators_lock));
-			m->rsi = 100 * (1-(1.0/(1+mmi[i]/mmd[i])));
-			m->brsi = 100 * sum(inc, 14)/(sum(inc,14)+sum(dec,14));
-			m->macd = ema14[i] - ema28[j];
-			pthread_mutex_unlock(&(m->indicators_lock));
-			printf("Market: %s, Wilder RSI: %.8f, Bechu RSI: %.8f, MACD: %.8f\n",
-			       m->marketname, m->rsi, m->brsi, m->macd);
-			// If rsi < 30 and we did not buy yet
-			// rsi != 0 in case api replied crap at init
-			if (m->rsi <= 30 && m->rsi != 0 && !buy) {
-				last = getticker(bbot->bi, m);
-				if (last) {
-					// btc available divided by the number of active bot markets
-					btcqty = quantity(bbot) / bbot->active_markets;
-					// qty of coin to be baught
-					qty = btcqty / last->last;
-					// order information
-					printf("BUY %s at %.8f, quantity: %.8f (BTC: %.8f), fees: %.8f\n", m->marketname, last->last, qty, btcqty, (0.25/100) * qty * last->last);
-					/* this instanciate a trade struct but it does not buy for real (API V2 not implemented) */
-					/* but we can use trade struct fields */
-					buy = new_trade(m, LIMIT, qty, t[0]->close, IMMEDIATE_OR_CANCEL, NONE, 0, BUY);
-					buy->btcpaid = btcqty;
-					//estimated fee (0.25%)
-					buy->fee = (0.25/100) * qty * last->last;
-					buy->realqty = qty - buy->fee;
-					// trick for test (no dup uuid between threads)
-					testuuid += last->last;
-					sprintf(testuuidstr, "%.8f", testuuid);
-					//uuid = buylimit(bi, m, qty, last->last);
-					/* fixme : add getorder and process reply then update buy struct fields or replace buy struct by order struct? */
-					insert_order(bbot->bi->connector, testuuidstr, m->marketname, buy->realqty, last->last, buy->btcpaid);
-					free(last); last = NULL;
-				}
+
+		/*
+		 * lock on the market as indicators will be shown (later) in a different thread.
+		 */
+		pthread_mutex_lock(&(m->indicators_lock));
+		m->rsi = 100 * (1-(1.0/(1+mmi[i]/mmd[i])));
+		m->brsi = 100 * sum(inc, 14)/(sum(inc,14)+sum(dec,14));
+		m->macd = ema14[i] - ema28[j];
+		pthread_mutex_unlock(&(m->indicators_lock));
+
+		printf("Market: %s,\tWilder RSI: %.8f,\tBechu RSI: %.8f,\tMACD: %.8f\n",
+		       m->marketname, m->rsi, m->brsi, m->macd);
+
+		/*
+		 * If rsi < 30 and we did not buy yet, we buy
+		 *
+		 * rsi != 0 in case of init failure (need to confirm it is fixed)
+		 * but should be removed
+		 */
+		if (m->rsi <= 30 && m->rsi != 0 && !buy) {
+			last = getticker(bbot->bi, m);
+			if (last) {
+				/* btc available divided by the number of active bot markets */
+				btcqty = quantity(bbot) / bbot->active_markets;
+				/* qty of coin to be baught */
+				qty = btcqty / last->last;
+				/* order information */
+				printf("BUY %s at %.8f, quantity: %.8f (BTC: %.8f), fees: %.8f\n", m->marketname, last->last, qty, btcqty, (0.25/100) * qty * last->last);
+				/*
+				 * This instanciate a trade struct but it does not buy for real (API V2 not implemented)
+				 * but we can use trade struct fields
+				 */
+				buy = new_trade(m, LIMIT, qty, val[i], IMMEDIATE_OR_CANCEL, NONE, 0, BUY);
+				buy->btcpaid = btcqty;
+				/* estimated fee (0.25%) */
+				buy->fee = (0.25/100) * qty * last->last;
+				buy->realqty = qty - buy->fee;
+				/* trick for test (no dup uuid between threads) */
+				testuuid += last->last;
+				sprintf(testuuidstr, "%.8f", testuuid);
+				/* uuid = buylimit(bi, m, qty, last->last); */
+				/* fixme : add getorder and process reply then update buy struct fields or replace buy struct by order struct? */
+				insert_order(bbot->bi->connector, testuuidstr, m->marketname, buy->realqty, last->last, buy->btcpaid);
+				free(last); last = NULL;
 			}
-			// this sell is not probable (we sell mostly in first loop when RSI is refreshed within a minute)
-			if (m->rsi >= 70 && buy) {
-				last = getticker(bbot->bi, m);
+		}
+		/*
+		 * This sell is unlikely (we sell mostly in first loop when RSI is refreshed ~1/s)
+		 */
+		if (buy) {
+			if ((last = getticker(bbot->bi, m))) {
 				double sellminusfee = (last->last * buy->realqty) * ( 1 - 0.25/100);
 				double estimatedgain = sellminusfee - buy->btcpaid;
-				if (estimatedgain > 0) {
+				if ((estimatedgain > 0 && m->rsi >= 70) || (estimatedgain >= buy->btcpaid / 100)) {
 					printf("SELL %s at %.8f, quantity: %.8f, Gain: %.8f\n", m->marketname, last->last, buy->realqty, estimatedgain);
 					sell = new_trade(m, LIMIT, 1, last->last, IMMEDIATE_OR_CANCEL, NONE, 0, SELL);
 					processed_order(bbot->bi->connector, (char*)testuuidstr, estimatedgain);
 					testuuid++;
 					free(buy); buy = NULL;
 					free(sell); sell = NULL;
-				} else {
+				} else if (m->rsi >= 70) {
 					printf("Warning, RSI of %s over 70 but no opportunity found (loss: %.8f)\n", m->marketname, estimatedgain);
 				}
 			}
-			free_ticks(t);
-		} else {
-			printf("gettick failed (skipping)\n");
-			i--; //i-- so averages are not corrupted (not too much)
 		}
 		i++; j++; k++;
 		if (i == 14) // for RSI
@@ -496,7 +514,6 @@ void *runbot(void *b) {
 			j = 0;
 		if (k == 9) // for EMA 9
 			k = 0;
-		t = NULL;
 	}
 	return NULL;
 }
