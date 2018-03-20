@@ -36,5 +36,6 @@ struct bittrex_bot {
 
 int bot(struct bittrex_info *bi);
 double quantity(struct bittrex_bot *bbot);
+void *runbot(void *b);
 
 #endif

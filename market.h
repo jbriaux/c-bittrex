@@ -232,11 +232,4 @@ void printorderbook(struct market *m);
 void printticks(struct tick **t);
 void printtick(struct tick *t);
 
-/*
- * Calculation of RSI: Wilder, Bechu
- * Calculation of EMA 9 14 28 and MACD(14, 28, signal 9)
- *
- */
-void *indicators(void *b);
-
 #endif
