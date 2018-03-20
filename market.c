@@ -89,7 +89,7 @@ int getmarkets(struct bittrex_info *bi) {
 	struct market *m = NULL;
 
 
-	root = api_call(GETMARKETS);
+	root = api_call(bi, GETMARKETS);
 	if (!root)
 		return 0;
 
@@ -149,7 +149,7 @@ struct market *getmarket(struct market **markets, char *marketname) {
 	return NULL;
 }
 
-struct ticker *getticker(struct market *m) {
+struct ticker *getticker(struct bittrex_info *bi, struct market *m) {
 	json_t *root, *result;
 	char *url;
 	struct ticker *ticker;
@@ -164,7 +164,7 @@ struct ticker *getticker(struct market *m) {
 	url = strcat(url, GETTICKER);
 	url = strcat(url, m->marketname);
 
-	root = api_call(url);
+	root = api_call(bi, url);
 	if (!root)
 		return NULL;
 	result = json_object_get(root,"result");
@@ -185,7 +185,7 @@ struct ticker *getticker(struct market *m) {
  * API returns old ticks to new ticks (result[0] is oldest)
  * Here ticks are sorted reverse: new to old
  */
-struct tick **getticks(struct market *m, char *interval, int nbtick) {
+struct tick **getticks(struct bittrex_info *bi, struct market *m, char *interval, int nbtick) {
 	json_t *root, *result, *raw;
 	char *url;
 	int size,i;
@@ -204,7 +204,7 @@ struct tick **getticks(struct market *m, char *interval, int nbtick) {
 	url = strcat(url, "&tickInterval=");
 	url = strcat(url, interval);
 
-	root = api_call(url);
+	root = api_call(bi, url);
 	if (!root)
 		return NULL;
 
@@ -250,12 +250,12 @@ struct currency *getcurrency(struct currency **currency, char *coin) {
 	return NULL;
 }
 
-struct currency **getcurrencies() {
+struct currency **getcurrencies(struct bittrex_info *bi) {
 	struct currency *c, **currencies;
 	json_t *root, *result, *tmp, *raw;
 	int size=0, i;
 
-	root = api_call(GETCURRENCIES);
+	root = api_call(bi, GETCURRENCIES);
 	if (!root)
 		return NULL;
 
@@ -309,7 +309,7 @@ int getmarketsummaries(struct bittrex_info *bi){
 	int i = 0;
 	json_t *result, *raw, *market_name, *root, *tmp;
 
-	root = api_call(GETMARKETSUMMARIES);
+	root = api_call(bi, GETMARKETSUMMARIES);
 	if (!root)
 		return -1;
 
@@ -393,7 +393,7 @@ int getmarketsummaries(struct bittrex_info *bi){
 /*
  * get market history (last 100)
  */
-int getmarkethistory(struct market *m) {
+int getmarkethistory(struct bittrex_info *bi, struct market *m) {
 	json_t *root, *result, *tmp, *raw;
 	int size, i;
 	char *url;
@@ -409,7 +409,7 @@ int getmarkethistory(struct market *m) {
 	url = strcat(url, GETMARKETHISTORY);
 	url = strcat(url, m->marketname);
 
-	root = api_call(url);
+	root = api_call(bi, url);
 	if (!root)
 		return -1;
 
@@ -479,7 +479,7 @@ int getmarkethistory(struct market *m) {
 	return 0;
 }
 
-int getmarketsummary(struct market *m) {
+int getmarketsummary(struct bittrex_info *bi, struct market *m) {
 	json_t *root, *result, *tmp, *raw;
 	char *url;
 	struct tm  *ctm;
@@ -494,7 +494,7 @@ int getmarketsummary(struct market *m) {
 	url = strcat(url, GETMARKETSUMMARY);
 	url = strcat(url, m->marketname);
 
-	root = api_call(url);
+	root = api_call(bi, url);
 	if (!root)
 		return -1;
 
@@ -587,7 +587,7 @@ static struct order **getorders(json_t *tab, int size) {
  * Get Orderbook for given market.
  * Type must be specified: buy, sell or both
  */
-int getorderbook(struct market *m, char *type) {
+int getorderbook(struct bittrex_info *bi, struct market *m, char *type) {
 	json_t *root, *result, *tmp;
 	int size;
 	char *url;
@@ -612,7 +612,7 @@ int getorderbook(struct market *m, char *type) {
 	url = strcat(url, m->marketname);
 	url = strcat(url, "&type=");
 	url = strcat(url, type);
-	root = api_call(url);
+	root = api_call(bi, url);
 	if (!root)
 		return -1;
 
@@ -893,7 +893,7 @@ void *indicators(void *b) {
 	tabinit(mmd, 14);
 
 	// Gather 14mn of history
-	ticks = getticks(m, "oneMin", 14);
+	ticks = getticks(bbot->bi, m, "oneMin", 14);
 	for (i=13; i >= 0; i--) {
 		val[i] = ticks[13-i]->close;
 		ema14[i] =  val[i];
@@ -921,7 +921,7 @@ void *indicators(void *b) {
 	}
 
 	// EMA 28 for MACD
-	ticks = getticks(m, "oneMin", 29);
+	ticks = getticks(bbot->bi, m, "oneMin", 29);
 	ema28[0] = ticks[28]->close;
 	for (i=1; i <= 27; i++)
 		ema28[i] = (ticks[28-i-1]->close - ema28[i-1])*w28 + ema28[i-1];
@@ -933,7 +933,7 @@ void *indicators(void *b) {
 		begining = time(NULL);
 		// this loop polls ~1/s api for tick
 		while (difftime(time(NULL), begining) < 60) {
-			tmptick = getticker(m);
+			tmptick = getticker(bbot->bi, m);
 			if (tmptick) {
 				previous = (i + 13) % 14; // 13 when i = 0
 				tmp = tmptick->last - val[previous];
@@ -969,7 +969,7 @@ void *indicators(void *b) {
 			}
 			sleep(1);
 		}
-		t = getticks(m, "oneMin", 1);
+		t = getticks(bbot->bi, m, "oneMin", 1);
 		if (t && t[0]) {
 			val[i] = t[0]->close;
 			previous = (i + 13) % 14; // 13 when i = 0
@@ -1002,7 +1002,7 @@ void *indicators(void *b) {
 			// If rsi < 30 and we did not buy yet
 			// rsi != 0 in case api replied crap at init
 			if (m->rsi <= 30 && m->rsi != 0 && !buy) {
-				last = getticker(m);
+				last = getticker(bbot->bi, m);
 				if (last) {
 					// btc available divided by the number of active bot markets
 					btcqty = quantity(bbot) / bbot->active_markets;
@@ -1028,7 +1028,7 @@ void *indicators(void *b) {
 			}
 			// this sell is not probable (we sell mostly in first loop when RSI is refreshed within a minute)
 			if (m->rsi >= 70 && buy) {
-				last = getticker(m);
+				last = getticker(bbot->bi, m);
 				double sellminusfee = (last->last * buy->realqty) * ( 1 - 0.25/100);
 				double estimatedgain = sellminusfee - buy->btcpaid;
 				if (estimatedgain > 0) {

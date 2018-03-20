@@ -41,7 +41,7 @@ double quantity(struct bittrex_bot *bbot) {
 
 	c = getcurrency(bbot->bi->currencies, "BTC");
 	if (c) {
-		b = getbalance(c, bbot->bi->api);
+		b = getbalance(bbot->bi, c, bbot->bi->api);
 		if (b)
 			return b->available;
 	}

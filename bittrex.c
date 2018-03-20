@@ -260,7 +260,7 @@ error:
  * if API keeps replying crap.
  *
  */
-json_t *api_call(char *call) {
+json_t *api_call(struct bittrex_info *bi, char *call) {
 	json_t *root, *result, *tmp;
 	json_error_t error;
 	char *reply;
@@ -293,13 +293,13 @@ json_t *api_call(char *call) {
 		fprintf(stderr, "Error proccessing request: %s, result field(array) empty. ", call);
 		fprintf(stderr, "Retrying\n");
 		json_decref(root);
-		return api_call(call);
+		return api_call(bi, call);
 	}
 	if ((json_typeof(result) == JSON_STRING) && (strlen(json_string_value(result)) == 0)) {
 		fprintf(stderr, "Error proccessing request: %s, result field(string) empty. ", call);
 		fprintf(stderr, "Retrying\n");
 		json_decref(root);
-		return api_call(call);
+		return api_call(bi, call);
 	}
 
 	return root;
@@ -312,7 +312,7 @@ json_t *api_call(char *call) {
  *
  * Unlike api_call() we do not replay call on failures.
  */
-json_t *api_call_sec(char *call, char *hmac) {
+json_t *api_call_sec(struct bittrex_info *bi, char *call, char *hmac) {
 	json_t *root, *result, *tmp;
 	json_error_t error;
 	char *reply;

@@ -331,7 +331,7 @@ int main(int argc, char *argv[]) {
 			}
 			break;
 		case 'c':
-			bi->currencies = getcurrencies();
+			bi->currencies = getcurrencies(bi);
 			c = getcurrency(bi->currencies, optarg);
 			if (!c) {
 				fprintf(stderr, "Invalid currency specified: %s\n", optarg);
@@ -384,7 +384,7 @@ int main(int argc, char *argv[]) {
 			printmarkets(bi->markets);
 		}
 		if (strcmp(call, "--getcurrencies") == 0) {
-				bi->currencies = getcurrencies();
+				bi->currencies = getcurrencies(bi);
 				printcurrencies(bi->currencies);
 		}
 		if (strcmp(call, "--getmarketsummaries") == 0) {
@@ -394,24 +394,24 @@ int main(int argc, char *argv[]) {
 		break;
 	case 1:
 		if (strcmp(call, "--getticker") == 0) {
-			tick = getticker(market);
+			tick = getticker(bi, market);
 			printticker(tick);
 		}
 		if (strcmp(call, "--getmarketsummary") == 0) {
-			getmarketsummary(market);
+			getmarketsummary(bi, market);
 			printmarketsummary(market);
 		}
 		if (strcmp(call, "--getorderbook") == 0) {
-			getorderbook(market, orderbooktype);
+			getorderbook(bi, market, orderbooktype);
 			printorderbook(market);
 		}
 		if (strcmp(call, "--getmarkethistory") == 0) {
-			getmarkethistory(market);
+			getmarkethistory(bi, market);
 			printmarkethistory(market);
 		}
 		break;
 	case 2:	/* getticks */
-		printticks(getticks(market, tickinterval, 100));
+		printticks(getticks(bi, market, tickinterval, 100));
 		break;
 	case 3:	/* trades */
 		if (strcmp(call, "--buylimit") == 0) {
@@ -439,9 +439,9 @@ int main(int argc, char *argv[]) {
 		if (!c)
 			arg_required(call, "currency");
 		if (strcmp(call, "--getbalance") == 0)
-			printbalance(getbalance(c,api));
+			printbalance(getbalance(bi, c,api));
 		if (strcmp(call, "--getdepositaddress") == 0) {
-			printf("Currency %s deposit address: %s\n", c->coin, getdepositaddress(c, api));
+			printf("Currency %s deposit address: %s\n", c->coin, getdepositaddress(bi, c, api));
 		}
 	case 7:	/* withdraw */
 		printf("You are about to send %lf of %s to %s.\n", quantity, c->coin, destaddress);
@@ -475,7 +475,7 @@ int main(int argc, char *argv[]) {
 		break;
 	case 10: /* getwithdrawalhistory getdeposithistory */
 		if (!c)
-			bi->currencies = getcurrencies();
+			bi->currencies = getcurrencies(bi);
 		if (strcmp(call, "--getwithdrawalhistory") == 0) {
 			getwithdrawalhistory(bi, c);
 		}
@@ -494,7 +494,7 @@ int main(int argc, char *argv[]) {
 			exit(EPERM);
 		}
 		getmarketsummaries(bi);
-		bi->currencies = getcurrencies();
+		bi->currencies = getcurrencies(bi);
 		bot(bi);
 		break;
 	default:

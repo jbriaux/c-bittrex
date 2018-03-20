@@ -25,6 +25,7 @@
 #ifndef ACCOUNT_H
 #define ACCOUNT_H
 
+#include <time.h>
 #include "bittrex.h"
 #include "market.h"
 
@@ -78,13 +79,13 @@ struct deposit {
 };
 
 struct api *new_api(char *apik, char *s);
-struct balance *getbalance(struct currency *c, struct api *api);
+struct balance *getbalance(struct bittrex_info *bi, struct currency *c, struct api *api);
 struct balance **getbalances(struct bittrex_info *bi, struct api *api);
 struct deposit **getdeposithistory(struct bittrex_info *bi, struct currency *c);
 struct user_order *getorder(struct bittrex_info *bi, char *uuid);
 struct user_order **getorderhistory(struct bittrex_info *bi, struct market *m);
 struct user_order **getopenorders(struct bittrex_info *bi, struct market *m);
-char *getdepositaddress(struct currency *c, struct api *apikey);
+char *getdepositaddress(struct bittrex_info *bi, struct currency *c, struct api *apikey);
 int withdraw(struct bittrex_info *bi, struct currency *c, double quantity, char *destaddress, char *paymentid);
 int cancel(struct bittrex_info *bi, char *uuid);
 char *buylimit(struct bittrex_info *bi, struct market *m, double quantity, double rate);

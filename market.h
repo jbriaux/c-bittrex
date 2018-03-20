@@ -145,19 +145,19 @@ int compare_market_by_volume(const void *a, const void *b);
 /*
  * get last ticker of given market(coin)
  */
-struct ticker *getticker(struct market *m);
+struct ticker *getticker(struct bittrex_info *bi, struct market *m);
 
 /*
  * get last tickers of given market and interval.
  * Interval can be oneMin fiveMin thirtyMin Hour
  * nbtick is mostly 14 (for RSI)
  */
-struct tick **getticks(struct market *m, char *interval, int nbtick);
+struct tick **getticks(struct bittrex_info *bi, struct market *m, char *interval, int nbtick);
 
 /*
  * fetch all available currencies
  */
-struct currency **getcurrencies();
+struct currency **getcurrencies(struct bittrex_info *bi);
 
 /*
  * return currency if currency name coin in array currencies is found
@@ -172,17 +172,17 @@ int getmarketsummaries(struct bittrex_info *bi);
 /*
  * get last 100 transaction of given market
  */
-int getmarkethistory(struct market *m);
+int getmarkethistory(struct bittrex_info *bi, struct market *m);
 
 /*
  * get market summary of given market
  */
-int getmarketsummary(struct market *m);
+int getmarketsummary(struct bittrex_info *bi, struct market *m);
 
 /*
  * get orderbook of given market
  */
-int getorderbook(struct market *m, char *type);
+int getorderbook(struct bittrex_info *bi, struct market *m, char *type);
 
 /*
  * Get available markets

@@ -102,6 +102,8 @@ struct bittrex_info {
 	/* The client library is almost (lol) thread-safe */
 	/* so let's put a lock so we avoid random behavior */
 	pthread_mutex_t sql_lock;
+	/* store the last api call to limit the call rate to 1/s max */
+	time_t last;
 };
 
 struct bittrex_info *bittrex_info();
@@ -117,8 +119,8 @@ char *json_string_get(char *dest, json_t *tmp);
  * fixme : do a single api call function
  */
 char *request(const char *url);
-json_t *api_call(char *call);
-json_t *api_call_sec(char *call, char *hmac);
+json_t *api_call(struct bittrex_info *bi, char *call);
+json_t *api_call_sec(struct bittrex_info *bi, char *call, char *hmac);
 char *getnonce();
 
 /*
