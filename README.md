@@ -15,8 +15,10 @@ What's left to do:
 - add a thread scanning input for bot mode in order to be able to stop it properly (so far in bot mode, you need to kill with Ctrl+C)
 - add a makefile and automatic tests (tests added)
 - add a new call : --volumeonrange start_date end_date (buy and sell detailed volumes)
-- store bot orders in a database: done 
-- In case of crash or program termination, the bot needs to be aware of its last state and resume (waiting to buy or to sell and corresponding orders for each thread running)
+- store bot orders in a database: **done**
+- In case of crash or program termination, the bot needs to be aware of its last state and resume (waiting to buy or to sell and corresponding orders for each thread running): **done**
+- limit API call to 1/s per type of call : **done** (mostly usefull for the bot)
+- Protect MySQL connector and bittrex_info fields modified by bot threads with a lock: **done**
 
 Installation
 -------------
@@ -36,7 +38,13 @@ gcc -W -Wall -lpthread -l curl -l jansson market.c main.c bittrex.c trade.c acco
 
 Setup the database by sourcing the sql file (consider to change the password in *installdb.sql* and *bittrex.h*)
 
-I will add a Makefile later.
+API key file is just a file with two lines:
+
+```
+line 1 is the key
+line 2 is the secret
+```
+
 
 Bittrex API Documentation
 -------------
@@ -192,174 +200,3 @@ bi->currencies = getcurrencies();
 ```
 
 Then you can do whatever you want (API replies are parsed and stored in structures)
-
-Important Structures
--------------
-
-Hint: I don't know why I used doubles at first but I did, maybe I will change it someday.
-
-```
-struct bittrex_info {
-        struct market **markets;
-        struct currency **currencies;
-        struct api *api;
-};
-
-/*
- * Market history
- * Used only in struct market
- */
-struct market_history {
-        int id;
-        char *timestamp;
-        struct tm *ctm; /* used for converting timestamp strings in time struct */
-        double quantity;
-        double total;
-        double price;
-        char *filltype;
-        char *ordertype;
-};
-
-/*
- * Market summary
- * Used only in struct market
- */
-struct market_summary {
-        char *timestamp;
-        struct tm *ctm; /* used for converting timestamp in time struct */
-        double last, low, high, basevolume, volume, bid, ask,prevday;
-        int openb, opens;
-        char *type;
-};
-
-/*
- * Market
- */
-struct market {
-        char *marketname;
-        char *marketcurrency;
-        char *marketcurrencylong;
-        char *basecurrency;
-        char *basecurrencylong;
-        int   isactive;
-        double mintradesize;
-        double high;
-        double low;
-        double basevolume;
-        struct market_history **mh;
-        struct market_summary *ms;
-        struct orderbook *ob;
-        double rsi; // Wilder RSI with mobile moving averages
-        double brsi; // Bechu RSI
-        double macd; // MACD 14 28 9 with exponential moving averages
-
-        /*
-         * When using bot mode, 1 thread / elected market is created
-         * rsi is updated once per mn
-         */
-        pthread_mutex_t indicators_lock;
-};
-
-/*
- * Tick
- */
-struct tick {
-        double open;
-        double high;
-        double low;
-        double close;
-        double volume;
-        double btcval;
-        char *timestamp;
-};
-
-/*
- * Ticker
- */
-struct ticker {
-        double bid;
-        double ask;
-        double last;
-};
-
-/*
- * Currency
- */
-struct  currency {
-        char *coin;
-        char *currencylong;
-        int minconfirmation;
-        double txfee;
-        int isactive;
-        char *cointype;
-        char *baseaddress;
-};
-
-/*
- * Orders of struct orderbook
- * related to market orderbook,
- * not related to user orders (trades).
- */
-struct order {
-        double quantity;
-        double rate;
-};
-
-/*
- * Orderbook
- */
-struct orderbook {
-        struct order **buy;
-        struct order **sell;
-};
-
-struct api {
-        char *key;
-        char *secret;
-};
-
-struct balance {
-        struct currency *currency;
-        double balance;
-        double available;
-        double pending;
-        char *cryptoaddress;
-        int requested;
-};
-
-struct user_order {
-        char *orderuuid;
-        struct market *market;
-
-        double quantity;
-        double quantityremaining;
-        double limit;
-        double commission;
-        double price;
-        double priceperunit;
-        double reserved;
-        double reservedremaining;
-        double commissionreserved;
-        double commissionRR;
-        int isopen;
-        int isconditional;
-        int immediateorcancel;
-        int cancelinitiaded;
-
-        char *timestamp;
-        char *ordertype;
-        char *dateclosed;
-        char *condition;
-        char *conditiontarget;
-};
-
-struct deposit {
-        int paymentuid;
-        struct currency *currency;
-        double amount;
-        char *address;
-        char *timestamp;
-        char *txid;
-};
-```
-
