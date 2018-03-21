@@ -399,12 +399,12 @@ void *runbot(void *b) {
 					double estimatedgain = sellminusfee - buy->btcpaid;
 					if ((estimatedgain > 0 && tmprsi >= 70) || (estimatedgain >= buy->btcpaid / 100)) {
 						if (!sell) {
-							printf("SELL %s at %.8f, quantity: %.8f, Gain (if sold): %.8f\n", m->marketname, tmptick->last, buy->realqty, estimatedgain);
 							sell = new_trade(m, LIMIT, 1, tmptick->last, IMMEDIATE_OR_CANCEL, NONE, 0, SELL);
 							if (!(selluuid = selllimit(bbot->bi, m, buy->realqty, tmptick->last))) {
 								printf("Something went wront when passing SELL order, uuid null\n");
 								free(sell); sell = NULL;
 							} else {
+								printf("SELL %s at %.8f, quantity: %.8f, Gain (if sold): %.8f\n", m->marketname, tmptick->last, buy->realqty, estimatedgain);
 								sellorder = getorder(bbot->bi, selluuid);
 								processed_order(bbot->bi->connector, buyuuid, estimatedgain);
 								free(buy); buy = NULL;
@@ -515,9 +515,10 @@ void *runbot(void *b) {
 					free(buy);
 					buy = NULL;
 				} else {
+					/* we let some time to bittrex */
+					sleep(3);
 					order = getorder(bbot->bi, buyuuid);
 					insert_order(bbot->bi->connector, buyuuid, m->marketname, buy->realqty, last->last, buy->btcpaid);
-
 					/* order already complete */
 					if (order && !order->isopen) {
 						buy->fee = order->commission;

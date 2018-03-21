@@ -40,8 +40,8 @@ char *getnonce() {
 	char *nonce;
 	struct timeval tv;
 
-	gettimeofday (&tv, NULL);
-	nonce = malloc(10);
+	gettimeofday(&tv, NULL);
+	nonce = malloc(11);
 	nonce[0] = '\0';
 	sprintf(nonce, "%d", (int)tv.tv_sec);
 	return nonce;
@@ -99,6 +99,8 @@ void free_bi(struct bittrex_info *bi) {
 		free_markets(bi->markets);
 		free_currencies(bi->currencies);
 		free_api(bi->api);
+		if (bi->lastcall)
+			free(bi->lastcall);
 		free(bi);
 	}
 	curl_global_cleanup();
@@ -242,6 +244,8 @@ char *apikey_request(const char *url, char *hmac)
     /* zero-terminate the result */
     data[write_result.pos] = '\0';
 
+    free(tmpbuf);
+    curl_slist_free_all(headers);
     return data;
 
 error:

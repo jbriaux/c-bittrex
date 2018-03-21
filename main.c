@@ -62,8 +62,8 @@ static void print_help(char *arg) {
 		printf(" ./bittrex --apikeyfile=path --getorder orderuuid\n");
 		printf(" ./bittrex --apikeyfile=path --market=marketname --getopenorders\n");
 		printf(" ./bittrex --apikeyfile=path [--market=marketname] --getorderhistory \n");
-		printf(" ./bittrex --apikeyfile=path [--currency=coin] --getwithdrawalhistory \n");
-		printf(" ./bittrex --apikeyfile=path [--currency=coin] --getdeposithistory \n");
+		printf(" ./bittrex --apikeyfile=path --currency=coin --getwithdrawalhistory \n");
+		printf(" ./bittrex --apikeyfile=path --currency=coin --getdeposithistory \n");
 		exit(0);
 	}
 	if (strcmp(arg, "--buylimit") == 0) {
@@ -134,12 +134,16 @@ int main(int argc, char *argv[]) {
 	struct bittrex_info *bi;
 	struct market *market = NULL;
 	struct ticker *tick = NULL;
+	struct tick **ticks = NULL;
 	struct currency *c = NULL;
 	struct api *api = NULL;
-	struct user_order *o = NULL;
+	struct user_order *o = NULL, **orders = NULL;
+	struct balance **balances = NULL, *b = NULL;
+	struct deposit **d = NULL;
 	FILE *file = NULL;
 	char *apikey = NULL, *call = NULL, *orderbooktype = NULL;
 	char *tickinterval = NULL, *uuid = NULL, *destaddress = NULL;
+	char *da = NULL;
 	char *paymentid = NULL;
 	char opt, key[33], secret[33];
 	char buf[255], buf2[32];
@@ -297,6 +301,8 @@ int main(int argc, char *argv[]) {
 		case 10: //getwithdrawalhistory and getdeposithistory
 			api_required = 1;
 			action_flag = 10;
+			currency_required = 1;
+			call = argv[optind-1];
 			break;
 		case 11: //getopenorders
 			api_required = 1;
@@ -412,7 +418,8 @@ int main(int argc, char *argv[]) {
 		}
 		break;
 	case 2:	/* getticks */
-		printticks(getticks(bi, market, tickinterval, 100));
+		printticks((ticks = getticks(bi, market, tickinterval, 100)));
+		free_ticks(ticks);
 		break;
 	case 3:	/* trades */
 		if (strcmp(call, "--buylimit") == 0) {
@@ -434,16 +441,21 @@ int main(int argc, char *argv[]) {
 		cancel(bi, uuid);
 		break;
 	case 5:	/* getbalances */
-		printbalances(getbalances(bi, api));
+		printbalances((balances = getbalances(bi, api)));
+		free_balances(balances);
 		break;
 	case 6:	/* getbalance, getdepositaddress */
 		if (!c)
 			arg_required(call, "currency");
-		if (strcmp(call, "--getbalance") == 0)
-			printbalance(getbalance(bi, c,api));
-		if (strcmp(call, "--getdepositaddress") == 0) {
-			printf("Currency %s deposit address: %s\n", c->coin, getdepositaddress(bi, c, api));
+		if (strcmp(call, "--getbalance") == 0) {
+			printbalance((b = getbalance(bi, c,api)));
+			free_balance(b);
 		}
+		if (strcmp(call, "--getdepositaddress") == 0) {
+			printf("Currency %s deposit address: %s\n", c->coin, (da = getdepositaddress(bi, c, api)));
+			free(da);
+		}
+		break;
 	case 7:	/* withdraw */
 		printf("You are about to send %lf of %s to %s.\n", quantity, c->coin, destaddress);
 		int vc = 0;
@@ -474,7 +486,8 @@ int main(int argc, char *argv[]) {
 	case 9:	/* getorderhistory */
 		if (!market) // no market specified
 			getmarkets(bi);
-		printorders(getorderhistory(bi, market));
+		printorders((orders = getorderhistory(bi, market)));
+		free_user_orders(orders);
 		break;
 	case 10: /* getwithdrawalhistory getdeposithistory */
 		if (!c)
@@ -483,13 +496,16 @@ int main(int argc, char *argv[]) {
 			getwithdrawalhistory(bi, c);
 		}
 		if (strcmp(call, "--getdeposithistory") == 0) {
-			printdeposithistory(getdeposithistory(bi, c));
+			printdeposithistory((d = getdeposithistory(bi, c)));
+			free_deposits(d);
 		}
 		break;
 	case 11: /* getopenorders */
 		if (!market)
 			getmarkets(bi);
-		printorders(getopenorders(bi, market));
+		printorders((orders = getopenorders(bi, market)));
+		free_user_orders(orders);
+		break;
 	case 12: /* bot */
 		getmarkets(bi);
 		if (!conn_init(bi)) {

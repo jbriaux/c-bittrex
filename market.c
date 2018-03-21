@@ -630,9 +630,6 @@ int getorderbook(struct bittrex_info *bi, struct market *m, char *type) {
 			return -1;
 		}
 		size = json_array_size(tmp);
-		if (!m->ob->buy)
-			m->ob->buy = malloc((size+1)*sizeof(struct order*));
-
 		m->ob->buy = getorders(tmp, size);
 
 		tmp =  json_object_get(result, "sell");
@@ -641,8 +638,6 @@ int getorderbook(struct bittrex_info *bi, struct market *m, char *type) {
 			return -1;
 		}
 		size = json_array_size(tmp);
-		if (!m->ob->sell)
-			m->ob->sell = malloc((size+1)*sizeof(struct order*));
 		m->ob->sell = getorders(tmp, size);
 
 
@@ -692,6 +687,14 @@ void free_market(struct market *m) {
 			free_market_summary(m->ms);
 		if (m->ob)
 			free_order_book(m->ob);
+		if (m->basecurrency)
+			free(m->basecurrency);
+		if (m->basecurrencylong)
+			free(m->basecurrencylong);
+		if (m->marketcurrency)
+			free(m->marketcurrency);
+		if (m->marketcurrencylong)
+			free(m->marketcurrencylong);
 		free(m);
 	}
 }
@@ -756,6 +759,7 @@ void free_order_book(struct orderbook *ob) {
 				free(*tmp);
 				tmp++;
 			}
+			free(ob->buy);
 		}
 		if (ob->sell) {
 			tmp = ob->sell;
@@ -763,6 +767,7 @@ void free_order_book(struct orderbook *ob) {
 				free(*tmp);
 				tmp++;
 			}
+			free(ob->sell);
 		}
 		free(ob);
 	}

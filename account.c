@@ -257,21 +257,31 @@ struct deposit **getdeposithistory(struct bittrex_info *bi, struct currency *c) 
 		raw = json_array_get(result,i);
 		d = malloc(sizeof(struct deposit));
 
+		d->paymentuid = 0;
 		tmp = json_object_get(raw, "Id");
 		d->paymentuid = json_number_value(tmp);
 
+		d->address = NULL;
 		tmp = json_object_get(raw, "CryptoAddress");
 		d->address = json_string_get(d->address, tmp);
 
+		d->timestamp = NULL;
 		tmp = json_object_get(raw, "LastUpdated");
 		d->timestamp = json_string_get(d->timestamp, tmp);
 
+
+		d->currency = NULL;
 		tmp = json_object_get(raw, "Currency");
 		if (tmp && json_string_value(tmp))
 			d->currency = getcurrency(bi->currencies, (char*)json_string_value(tmp));
 
+		d->amount = 0;
 		tmp = json_object_get(raw, "Amount");
 		d->amount = json_real_value(tmp);
+
+		d->txid = NULL;
+		tmp = json_object_get(raw, "TxId");
+		d->txid = json_string_get(d->txid, tmp);
 
 		deposit[i] = d;
 	}
@@ -641,7 +651,7 @@ struct user_order **getorderhistory(struct bittrex_info *bi, struct market *mark
 	orders = malloc((size+1)*sizeof(struct user_order*));
 
 	for (i=0; i < size; i++) {
-		o = malloc(sizeof(struct user_order));
+		o = new_user_order();
 		raw = json_array_get(result,i);
 
 		tmp = json_object_get(raw, "OrderUuid");
@@ -750,7 +760,7 @@ struct user_order **getopenorders(struct bittrex_info *bi, struct market *market
 	orders = malloc((size+1)*sizeof(struct user_order*));
 
 	for (i=0; i < size; i++) {
-		o = malloc(sizeof(struct user_order));
+		o = new_user_order();
 		raw = json_array_get(result,i);
 
 		tmp = json_object_get(raw, "OrderUuid");
@@ -798,6 +808,8 @@ struct user_order **getopenorders(struct bittrex_info *bi, struct market *market
 		tmp = json_object_get(raw, "ImmediateOrCancel");
 		o->immediateorcancel = json_is_true(tmp);
 
+		o->isopen = 1;
+
 		orders[i] = o;
 	}
 	orders[i] = NULL;
@@ -808,6 +820,35 @@ struct user_order **getopenorders(struct bittrex_info *bi, struct market *market
 	free(hmac);
 
 	return orders;
+}
+
+struct user_order *new_user_order() {
+	struct user_order *u = NULL;
+
+	u = malloc(sizeof(struct user_order));
+	u->orderuuid = NULL;
+	u->market = NULL;
+	u->timestamp = NULL;
+	u->ordertype = NULL;
+	u->dateclosed = NULL;
+	u->condition = NULL;
+	u->conditiontarget = NULL;
+	u->quantity = 0;
+	u->quantityremaining = 0;
+	u->limit = 0;
+	u->commission = 0;
+	u->price = 0;
+	u->priceperunit = 0;
+	u->reserved = 0;
+	u->reservedremaining = 0;
+	u->commissionreserved = 0;
+	u->commissionRR = 0;
+	u->isopen = 0;
+	u->isconditional = 0;
+	u->immediateorcancel = 0;
+	u->cancelinitiaded = 0;
+
+	return u;
 }
 
 struct user_order *getorder(struct bittrex_info *bi, char *uuid){
@@ -848,7 +889,7 @@ struct user_order *getorder(struct bittrex_info *bi, char *uuid){
 		return NULL;
 	}
 
-	o = malloc(sizeof(struct user_order));
+	o = new_user_order();
 	json_order_get(bi, o, result);
 
 	json_decref(root);
@@ -988,6 +1029,16 @@ void free_api(struct api *a) {
 	}
 }
 
+void free_deposits(struct deposit **deposits) {
+	struct deposit **tmp = deposits;
+
+	while (tmp && *tmp) {
+		free_deposit(*tmp);
+		tmp++;
+	}
+	free(deposits);
+}
+
 void free_deposit(struct deposit *deposit) {
 
 	if (deposit) {
@@ -997,6 +1048,16 @@ void free_deposit(struct deposit *deposit) {
 		deposit->currency = NULL;
 		free(deposit);
 	}
+}
+
+void free_user_orders(struct user_order **orders) {
+	struct user_order **tmp = orders;
+
+	while (tmp && *tmp) {
+		free_user_order(*tmp);
+		tmp++;
+	}
+	free(orders);
 }
 
 void free_user_order(struct user_order *o) {
@@ -1026,7 +1087,7 @@ void printorder(struct user_order *o) {
 		printf("OrderType:\t\t\t%s\n", o->ordertype);
 		printf("Quantity:\t\t\t%.8f\n", o->quantity);
 		printf("QuantityRemaining:\t\t%.8f\n", o->quantityremaining);
-		printf("Limit:\t\t\t\t%lf\n", o->limit);
+		printf("Limit:\t\t\t\t%.8f\n", o->limit);
 		printf("Reserved:\t\t\t%.8f\n", o->reserved);
 		printf("ReservedRemaining:\t\t%.8f\n", o->reservedremaining);
 		printf("CommissionReserved:\t\t%.8f\n", o->commissionreserved);
@@ -1091,7 +1152,8 @@ void printdeposithistory(struct deposit **dep) {
 			printf("Address:\t%s\n", (*tmp)->address);
 		if ((*tmp)->timestamp)
 			printf("Opened:\t\t%s\n", (*tmp)->timestamp);
-		printf("TxID:\t\t%s\n", (*tmp)->txid);
+		if ((*tmp)->txid)
+			printf("TxID:\t\t%s\n", (*tmp)->txid);
 		printf("\n");
 		tmp++;
 	}

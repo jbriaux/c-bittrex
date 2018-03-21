@@ -82,6 +82,7 @@ struct api *new_api(char *apik, char *s);
 struct balance *getbalance(struct bittrex_info *bi, struct currency *c, struct api *api);
 struct balance **getbalances(struct bittrex_info *bi, struct api *api);
 struct deposit **getdeposithistory(struct bittrex_info *bi, struct currency *c);
+struct user_order *new_user_order();
 struct user_order *getorder(struct bittrex_info *bi, char *uuid);
 struct user_order **getorderhistory(struct bittrex_info *bi, struct market *m);
 struct user_order **getopenorders(struct bittrex_info *bi, struct market *m);
@@ -93,8 +94,10 @@ char *selllimit(struct bittrex_info *bi, struct market *m, double quantity, doub
 void getwithdrawalhistory(struct bittrex_info *bi, struct currency *c);
 
 void free_user_order(struct user_order *o);
+void free_user_orders(struct user_order **orders);
 void free_api(struct api *a);
 void free_deposit(struct deposit *deposit);
+void free_deposits(struct deposit **deposits);
 void free_balance(struct balance *b);
 void free_balances(struct balance **b);
 
