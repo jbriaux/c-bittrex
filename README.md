@@ -1,13 +1,12 @@
 C-bittrex  
 ==============
-Bittrex C API command line - use at your own risk.
+Bittrex C API command line - **use at your own risk**.
 
 This is a C command line to use bittrex API. 
 
 It also contains an example of a bot for minute trading based on RSI 14.
-The bot calculates Wilder RSI, Bechu RSI and MACD(14,28,9) but so far only shows what trades would be done and don't actually send the order.
 
-The API is functional, the bot mode is still experimental.
+The API is functional, the bot mode is still experimental **use at your own risk**.
 
 Todo
 -------------
@@ -15,10 +14,14 @@ What's left to do:
 - add a thread scanning input for bot mode in order to be able to stop it properly (so far in bot mode, you need to kill with Ctrl+C)
 - add a makefile and automatic tests (tests added)
 - add a new call : --volumeonrange start_date end_date (buy and sell detailed volumes)
+
+Fixed recently:
+-------------
 - store bot orders in a database: **done**
 - In case of crash or program termination, the bot needs to be aware of its last state and resume (waiting to buy or to sell and corresponding orders for each thread running): **done**
 - limit API call to 1/s per type of call : **done** (mostly usefull for the bot)
 - Protect MySQL connector and bittrex_info fields modified by bot threads with a lock: **done**
+- Valgrind on most calls (not the bot) **done**
 
 Installation
 -------------
@@ -82,8 +85,8 @@ Account API Calls:
  ./bittrex --apikeyfile=path --getorder orderuuid
  ./bittrex --apikeyfile=path --market=marketname --getopenorders
  ./bittrex --apikeyfile=path [--market=marketname] --getorderhistory
- ./bittrex --apikeyfile=path [--currency=coin] --getwithdrawalhistory
- ./bittrex --apikeyfile=path [--currency=coin] --getdeposithistory`
+ ./bittrex --apikeyfile=path --currency=coin --getwithdrawalhistory
+ ./bittrex --apikeyfile=path --currency=coin --getdeposithistory`
 ```
 Examples of calls
 -------------
