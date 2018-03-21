@@ -44,6 +44,7 @@ struct trade *new_trade(struct market *m,
 	trade->condition = condition;
 	trade->target = target;
 	trade->buyorsell = bos;
+	trade->completed = 0;
 
 	return trade;
 }

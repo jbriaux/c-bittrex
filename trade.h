@@ -49,6 +49,7 @@ struct trade {
 	condition_type condition;
 	int target;
 	int buyorsell;
+	int completed;
 };
 
 struct trade *new_trade(struct market *m,

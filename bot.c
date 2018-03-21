@@ -273,6 +273,7 @@ static struct trade *lasttransaction(MYSQL *connector, struct market *m) {
  *
  * Buy when Wilder RSI is less than 30
  * Sell when Wilder RSI is greater than 70 and margin > 0.25% (fees)
+ * or sell whatever RSI is and if gain >= 1%
  *
  * Two RSI are computed:
  * - rsi based on
@@ -292,9 +293,10 @@ void *runbot(void *b) {
 	struct bittrex_bot *bbot = (struct bittrex_bot *)b;
 	struct market *m = bbot->market;
 	struct trade *buy=NULL, *sell=NULL;
+	struct user_order *order = NULL, *sellorder = NULL;
 	struct tick **ticks, **t;
 	struct ticker *last, *tmptick;
-	char *uuid = NULL;
+	char *buyuuid = NULL, *selluuid = NULL;
 	time_t begining;
 	double val[14], inc[14], dec[14]; // for old rsi
 	double mmi[14], mmd[14]; // for wielder rsi
@@ -308,8 +310,6 @@ void *runbot(void *b) {
 	double tmp = 0, tmprsi = 0;
 	int i = 0, j = 0, k = 0;
 	int previous = 0;
-	double testuuid = 4242;
-	char testuuidstr[40];
 	double previousloss = 0;
 
 	// look for past unprocessed trades
@@ -394,17 +394,22 @@ void *runbot(void *b) {
 				mmi[i] = (inc[previous] + mmi[previous]*(13.0))/14.0;
 				mmd[i] = (dec[previous] + mmd[previous]*(13.0))/14.0;
 				tmprsi =  100 * (1.0-(1.0/(1.0+mmi[i]/mmd[i])));
-				if (buy) {
+				if (buy && buy->completed) {
 					double sellminusfee = (tmptick->last * buy->realqty) * ( 1 - 0.25/100);
 					double estimatedgain = sellminusfee - buy->btcpaid;
 					if ((estimatedgain > 0 && tmprsi >= 70) || (estimatedgain >= buy->btcpaid / 100)) {
-						printf("SELL %s at %.8f, quantity: %.8f, Gain (if sold): %.8f\n", m->marketname, tmptick->last, buy->realqty, estimatedgain);
-						sell = new_trade(m, LIMIT, 1, tmptick->last, IMMEDIATE_OR_CANCEL, NONE, 0, SELL);
-						//uuid = selllimit(bi, m, buy->realqty, tmptick->last);
-						processed_order(bbot->bi->connector, (char*)testuuidstr, estimatedgain);
-						testuuid++;
-						free(buy); buy = NULL;
-						free(sell); sell = NULL;
+						if (!sell) {
+							printf("SELL %s at %.8f, quantity: %.8f, Gain (if sold): %.8f\n", m->marketname, tmptick->last, buy->realqty, estimatedgain);
+							sell = new_trade(m, LIMIT, 1, tmptick->last, IMMEDIATE_OR_CANCEL, NONE, 0, SELL);
+							if (!(selluuid = selllimit(bbot->bi, m, buy->realqty, tmptick->last))) {
+								printf("Something went wront when passing SELL order, uuid null\n");
+								free(sell); sell = NULL;
+							} else {
+								sellorder = getorder(bbot->bi, selluuid);
+								processed_order(bbot->bi->connector, buyuuid, estimatedgain);
+								free(buy); buy = NULL;
+							}
+						}
 					} else {
 						if (previousloss != estimatedgain && tmprsi >= 70) {
 							printf("Warning, RSI(tmp) of %s over 70 but no opportunity found (loss: %.8f)\n", m->marketname, estimatedgain);
@@ -452,8 +457,34 @@ void *runbot(void *b) {
 		m->macd = ema14[i] - ema28[j];
 		pthread_mutex_unlock(&(m->indicators_lock));
 
-		printf("Market: %s,\tWilder RSI: %.8f,\tBechu RSI: %.8f,\tMACD: %.8f\n",
+		printf("Market: %s\tWilder RSI: %.8f\tBechu RSI: %.8f\tMACD: %.8f\n",
 		       m->marketname, m->rsi, m->brsi, m->macd);
+
+		/* refresh buy order state */
+		if (buy && !buy->completed) {
+			free_user_order(order);
+			order = getorder(bbot->bi, buyuuid);
+			if (!order->isopen) {
+				buy->fee = order->commission;
+				buy->realqty = order->quantity;
+				buy->completed = 1;
+			}
+		}
+
+		/*
+		 * refresh sell order state
+		 * we free buyuuid and sell + selluuid when sell order completes.
+		 */
+		if (sell && !sell->completed) {
+			free_user_order(sellorder);
+			sellorder = getorder(bbot->bi, selluuid);
+			if (!sellorder->isopen) {
+				free_user_order(sellorder);
+				free(sell); sell = NULL;
+				free(selluuid); selluuid = NULL;
+				free(buyuuid); buyuuid = NULL;
+			}
+		}
 
 		/*
 		 * If rsi < 30 and we did not buy yet, we buy
@@ -461,11 +492,13 @@ void *runbot(void *b) {
 		 * rsi != 0 in case of init failure (need to confirm it is fixed)
 		 * but should be removed
 		 */
-		if (m->rsi <= 30 && m->rsi != 0 && !buy) {
+		if (m->rsi <= 30 && m->rsi != 0 && !buy && !sell) {
 			last = getticker(bbot->bi, m);
 			if (last) {
 				/* btc available divided by the number of active bot markets */
 				btcqty = quantity(bbot) / bbot->active_markets;
+				/* we use 99% of qty available */
+				btcqty *= 0.99;
 				/* qty of coin to be baught */
 				qty = btcqty / last->last;
 				/* order information */
@@ -474,34 +507,47 @@ void *runbot(void *b) {
 				 * This instanciate a trade struct but it does not buy for real (API V2 not implemented)
 				 * but we can use trade struct fields
 				 */
-				buy = new_trade(m, LIMIT, qty, val[i], IMMEDIATE_OR_CANCEL, NONE, 0, BUY);
-				buy->btcpaid = btcqty;
-				/* estimated fee (0.25%) */
-				buy->fee = (0.25/100) * qty * last->last;
-				buy->realqty = qty - buy->fee;
-				/* trick for test (no dup uuid between threads) */
-				testuuid += last->last;
-				sprintf(testuuidstr, "%.8f", testuuid);
-				/* uuid = buylimit(bi, m, qty, last->last); */
-				/* fixme : add getorder and process reply then update buy struct fields or replace buy struct by order struct? */
-				insert_order(bbot->bi->connector, testuuidstr, m->marketname, buy->realqty, last->last, buy->btcpaid);
+				buy = new_trade(m, LIMIT, qty, last->last, IMMEDIATE_OR_CANCEL, NONE, 0, BUY);
+				buy->btcpaid = btcqty * 1.0025;
+				buy->realqty = qty;
+				if (!(buyuuid = buylimit(bbot->bi, m, qty, last->last))) {
+					printf("Something went wront when passing BUY order, uuid null\n");
+					free(buy);
+					buy = NULL;
+				} else {
+					order = getorder(bbot->bi, buyuuid);
+					insert_order(bbot->bi->connector, buyuuid, m->marketname, buy->realqty, last->last, buy->btcpaid);
+
+					/* order already complete */
+					if (order && !order->isopen) {
+						buy->fee = order->commission;
+						buy->realqty = order->quantity;
+						buy->completed = 1;
+					}
+				}
 				free(last); last = NULL;
 			}
 		}
 		/*
 		 * This sell is unlikely (we sell mostly in first loop when RSI is refreshed ~1/s)
 		 */
-		if (buy) {
+		if (buy && buy->completed) {
 			if ((last = getticker(bbot->bi, m))) {
 				double sellminusfee = (last->last * buy->realqty) * ( 1 - 0.25/100);
 				double estimatedgain = sellminusfee - buy->btcpaid;
 				if ((estimatedgain > 0 && m->rsi >= 70) || (estimatedgain >= buy->btcpaid / 100)) {
-					printf("SELL %s at %.8f, quantity: %.8f, Gain: %.8f\n", m->marketname, last->last, buy->realqty, estimatedgain);
-					sell = new_trade(m, LIMIT, 1, last->last, IMMEDIATE_OR_CANCEL, NONE, 0, SELL);
-					processed_order(bbot->bi->connector, (char*)testuuidstr, estimatedgain);
-					testuuid++;
-					free(buy); buy = NULL;
-					free(sell); sell = NULL;
+					if (!sell) {
+						sell = new_trade(m, LIMIT, 1, last->last, IMMEDIATE_OR_CANCEL, NONE, 0, SELL);
+						if (!(selluuid = selllimit(bbot->bi, m, buy->realqty, last->last))) {
+							printf("Something went wront when passing SELL order, uuid null\n");
+							free(sell); sell = NULL;
+						} else {
+							printf("SELL %s at %.8f, quantity: %.8f, Gain (if sold): %.8f\n", m->marketname, last->last, buy->realqty, estimatedgain);
+							sellorder = getorder(bbot->bi, selluuid);
+							processed_order(bbot->bi->connector, buyuuid, estimatedgain);
+							free(buy); buy = NULL;
+						}
+					}
 				} else if (m->rsi >= 70) {
 					printf("Warning, RSI of %s over 70 but no opportunity found (loss: %.8f)\n", m->marketname, estimatedgain);
 				}

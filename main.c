@@ -136,6 +136,7 @@ int main(int argc, char *argv[]) {
 	struct ticker *tick = NULL;
 	struct currency *c = NULL;
 	struct api *api = NULL;
+	struct user_order *o = NULL;
 	FILE *file = NULL;
 	char *apikey = NULL, *call = NULL, *orderbooktype = NULL;
 	char *tickinterval = NULL, *uuid = NULL, *destaddress = NULL;
@@ -466,7 +467,9 @@ int main(int argc, char *argv[]) {
 		}
 		break;
 	case 8:	/* getorder */
-		printorder(getorder(bi, uuid));
+		printorder((o = getorder(bi, uuid)));
+		if (o)
+			free_user_order(o);
 		break;
 	case 9:	/* getorderhistory */
 		if (!market) // no market specified
