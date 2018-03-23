@@ -32,8 +32,6 @@ struct bittrex_bot {
 	struct bittrex_info *bi;
 	struct market *market;
 	int active_markets;
-	/* keep track of active threads */
-	int trades_active;
 };
 
 int bot(struct bittrex_info *bi);
