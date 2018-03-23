@@ -78,6 +78,7 @@ struct market {
 	double rsi; // Wilder RSI with mobile moving averages
 	double brsi; // Bechu RSI
 	double macd; // MACD 14 28 9 with exponential moving averages
+	int bot_rank;
 
 	/*
 	 * When using bot mode, 1 thread / elected market is created

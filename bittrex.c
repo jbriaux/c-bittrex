@@ -361,7 +361,6 @@ json_t *api_call_sec(struct bittrex_info *bi, char *call, char *hmac, char *root
 	if(!reply)
 		return NULL;
 
-	//printf("%s\n", reply);
 	root = json_loads(reply, 0, &error);
 	free(reply);
 

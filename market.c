@@ -192,7 +192,7 @@ struct tick **getticks(struct bittrex_info *bi, struct market *m, char *interval
 	struct tick **ticks, *tick;
 
 	if (!m || !m->marketname) {
-		fprintf(stderr, "getticker: invalid market specified.\n");
+		fprintf(stderr, "getticks: invalid market specified.\n");
 		return NULL;
 	}
 

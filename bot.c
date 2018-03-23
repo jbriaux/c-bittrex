@@ -49,6 +49,21 @@ double quantity(struct bittrex_bot *bbot) {
 	return 0;
 }
 
+int rankofmarket(struct bittrex_info *bi, struct market *m) {
+	int i = 0, j = 1;
+
+	/* refresh state */
+	getmarketsummaries(bi);
+	for (i=0; i < bi->nbmarkets; i++) {
+		if (strncmp("BTC-", bi->markets[i]->marketname, 4) == 0) {
+			if (strcmp(m->marketname, bi->markets[i]->marketname) == 0)
+				return j;
+			j++;
+		}
+	}
+	return -1;
+}
+
 int bot(struct bittrex_info *bi) {
 	struct bittrex_bot **bbot;
 	struct market **worthm;
@@ -76,6 +91,7 @@ int bot(struct bittrex_info *bi) {
 			/* } */
 			/* free(ticks); */
 			worthm[nbm] = bi->markets[i];
+			worthm[nbm]->bot_rank = nbm;
 			nbm++;
 			j++;
 		}
@@ -297,20 +313,30 @@ void *runbot(void *b) {
 	struct tick **ticks, **t;
 	struct ticker *last, *tmptick;
 	char *buyuuid = NULL, *selluuid = NULL;
-	time_t begining;
-	double val[14], inc[14], dec[14]; // for old rsi
-	double mmi[14], mmd[14]; // for wielder rsi
-	double ema9[9]; // EMA 9
-	double ema14[14]; // EMA 14
-	double ema28[28]; // EMA 28
+	/*
+	 * begining is for the loop
+	 * init is for the init part
+	 * if api took a long time to reply, we got innacurate data,
+	 * the thread must exit.
+	 */
+	time_t begining, init;
+	/* for Bechu RSI */
+	double val[14], inc[14], dec[14];
+	/* for Wilder RSI */
+	double mmi[14], mmd[14];
+	/* for MACD(14,28,9) */
+	double ema9[9], ema14[14], ema28[28];
+	/* lazy variables */
 	double w9 = (2.0/(9+1));
 	double w14 = (2.0/(14+1));
 	double w28 = (2.0/(28+1));
 	double btcqty = 0, qty = 0;
 	double tmp = 0, tmprsi = 0;
 	int i = 0, j = 0, k = 0;
+	/* previous is previous index in loop (13 when i = 0) */
 	int previous = 0;
 	double previousloss = 0;
+	int market_rank = m->bot_rank;
 
 	// look for past unprocessed trades
 	pthread_mutex_lock(&(bbot->bi->bi_lock));
@@ -324,18 +350,31 @@ void *runbot(void *b) {
 	tabinit(dec, 14);
 	tabinit(mmi, 14);
 	tabinit(mmd, 14);
+	tabinit(ema14, 14);
+	tabinit(ema28, 28);
 
-	// Gather 14mn of history
-	ticks = getticks(bbot->bi, m, "oneMin", 14);
+	init= time(NULL);
+	ticks = getticks(bbot->bi, m, "oneMin", 29);
+	/* getticks took more than 1 mn : considered invalid retry only once */
+	if (difftime(time(NULL), init) > 60) {
+		init= time(NULL);
+		free_ticks(ticks);
+		ticks = getticks(bbot->bi, m, "oneMin", 29);
+		if (difftime(time(NULL), init) > 60) {
+			fprintf(stderr,
+				"Init too long, exiting market thread: %s\n",
+				m->marketname);
+			return NULL;
+		}
+	}
 	for (i=13; i >= 0; i--) {
 		val[i] = ticks[13-i]->close;
 		ema14[i] =  val[i];
 		if (i <= 8)
 			ema9[i] = val[i];
 	}
-	free_ticks(ticks);
 
-	// Rest of init i=0 will be filled later(first tick in while loop above)
+	// Rest of init (i=0) will be filled later(first tick in while loop above)
 	for (i=1; i <= 13; i++) {
 		tmp = val[i] - val[i-1];
 
@@ -354,11 +393,11 @@ void *runbot(void *b) {
 	}
 
 	// EMA 28 for MACD
-	ticks = getticks(bbot->bi, m, "oneMin", 29);
 	ema28[0] = ticks[28]->close;
 	for (i=1; i <= 27; i++)
 		ema28[i] = (ticks[28-i-1]->close - ema28[i-1])*w28 + ema28[i-1];
 	free_ticks(ticks);
+
 
 	i = 0;
 	/*
@@ -404,9 +443,19 @@ void *runbot(void *b) {
 								printf("Something went wront when passing SELL order, uuid null\n");
 								free(sell); sell = NULL;
 							} else {
-								printf("SELL %s at %.8f, quantity: %.8f, Gain (if sold): %.8f\n", m->marketname, tmptick->last, buy->realqty, estimatedgain);
-								sellorder = getorder(bbot->bi, selluuid);
+								printf("SELL %s at %.8f, quantity: %.8f, Gain (if sold): %.8f\n",
+								       m->marketname,
+								       tmptick->last,
+								       buy->realqty,
+								       estimatedgain);
+								while (!sellorder) {
+									fprintf(stderr, "getorder: '%s' failed, retrying.\n",
+										selluuid);
+									sellorder = getorder(bbot->bi, selluuid);
+								}
+								pthread_mutex_lock(&(bbot->bi->bi_lock));
 								processed_order(bbot->bi->connector, buyuuid, estimatedgain);
+								pthread_mutex_unlock(&(bbot->bi->bi_lock));
 								free(buy); buy = NULL;
 							}
 						}
@@ -446,7 +495,7 @@ void *runbot(void *b) {
 		if (k == 0)
 			ema9[k] = (val[i] - ema9[8])*w9 + ema9[8];
 		if (k >= 1)
-				ema9[k] = (val[i] - ema9[k-1])*w9 + ema9[k-1];
+			ema9[k] = (val[i] - ema9[k-1])*w9 + ema9[k-1];
 
 		/*
 		 * lock on the market as indicators will be shown (later) in a different thread.
@@ -457,16 +506,21 @@ void *runbot(void *b) {
 		m->macd = ema14[i] - ema28[j];
 		pthread_mutex_unlock(&(m->indicators_lock));
 
-		printf("Market: %s\tWilder RSI: %.8f\tBechu RSI: %.8f\tMACD: %.8f\n",
-		       m->marketname, m->rsi, m->brsi, m->macd);
+		fprintf(stderr,
+			"Market: %s\tWilder RSI: %.8f\tBechu RSI: %.8f\tMACD: %.8f\n",
+			m->marketname,
+			m->rsi,
+			m->brsi,
+			m->macd);
 
 		/* refresh buy order state */
 		if (buy && !buy->completed) {
 			free_user_order(order);
 			order = getorder(bbot->bi, buyuuid);
-			if (!order->isopen) {
+			if (order && !order->isopen) {
 				buy->fee = order->commission;
 				buy->realqty = order->quantity;
+				free_user_order(order);
 				buy->completed = 1;
 			}
 		}
@@ -474,15 +528,26 @@ void *runbot(void *b) {
 		/*
 		 * refresh sell order state
 		 * we free buyuuid and sell + selluuid when sell order completes.
+		 * Check if the state of the market changed (in volume)
+		 * in case of change, exit and open a new thread on another market.
 		 */
 		if (sell && !sell->completed) {
 			free_user_order(sellorder);
 			sellorder = getorder(bbot->bi, selluuid);
-			if (!sellorder->isopen) {
+			if (sellorder && !sellorder->isopen) {
+				pthread_mutex_lock(&(bbot->bi->bi_lock));
+				bbot->trades_active--;
+				pthread_mutex_unlock(&(bbot->bi->bi_lock));
 				free_user_order(sellorder);
 				free(sell); sell = NULL;
 				free(selluuid); selluuid = NULL;
 				free(buyuuid); buyuuid = NULL;
+				if (rankofmarket(bbot->bi, m) < market_rank) {
+					printf("Market(%s) lost rank, exiting\n", m->marketname);
+					return NULL;
+				} else {
+					printf("Market(%s) rank increased! Good, continuing.", m->marketname);
+				}
 			}
 		}
 
@@ -496,7 +561,7 @@ void *runbot(void *b) {
 			last = getticker(bbot->bi, m);
 			if (last) {
 				/* btc available divided by the number of active bot markets */
-				btcqty = quantity(bbot) / bbot->active_markets;
+				btcqty = quantity(bbot) / (bbot->active_markets - bbot->trades_active);
 				/* we use 99% of qty available */
 				btcqty *= 0.99;
 				/* qty of coin to be baught */
@@ -515,14 +580,20 @@ void *runbot(void *b) {
 					free(buy);
 					buy = NULL;
 				} else {
+					pthread_mutex_lock(&(bbot->bi->bi_lock));
+					bbot->trades_active++;
+					pthread_mutex_unlock(&(bbot->bi->bi_lock));
 					/* we let some time to bittrex */
 					sleep(3);
 					order = getorder(bbot->bi, buyuuid);
+					pthread_mutex_lock(&(bbot->bi->bi_lock));
 					insert_order(bbot->bi->connector, buyuuid, m->marketname, buy->realqty, last->last, buy->btcpaid);
+					pthread_mutex_unlock(&(bbot->bi->bi_lock));
 					/* order already complete */
 					if (order && !order->isopen) {
 						buy->fee = order->commission;
 						buy->realqty = order->quantity;
+						free_user_order(order);
 						buy->completed = 1;
 					}
 				}
@@ -545,7 +616,9 @@ void *runbot(void *b) {
 						} else {
 							printf("SELL %s at %.8f, quantity: %.8f, Gain (if sold): %.8f\n", m->marketname, last->last, buy->realqty, estimatedgain);
 							sellorder = getorder(bbot->bi, selluuid);
+							pthread_mutex_lock(&(bbot->bi->bi_lock));
 							processed_order(bbot->bi->connector, buyuuid, estimatedgain);
+							pthread_mutex_unlock(&(bbot->bi->bi_lock));
 							free(buy); buy = NULL;
 						}
 					}

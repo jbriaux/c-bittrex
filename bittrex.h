@@ -80,7 +80,7 @@
 #define GETORDERHISTORY ACCOUNT_API_URL "getorderhistory?apikey="
 #define GETWITHDRAWALHISTORY ACCOUNT_API_URL "getwithdrawalhistory?apikey="
 
-#define BUFFER_SIZE  (4096 * 1024)  /* 4MB  */
+#define BUFFER_SIZE  (4096 * 1024)  /* 4MB  => this is way too much 1MB should be ok */
 #define MAX_ACTIVE_MARKETS 5 /* for the bot */
 
 #define MYSQL_PASSWD "Whr3PvCJ7cb"
@@ -97,16 +97,22 @@ struct bittrex_info {
 	struct market **markets;
 	struct currency **currencies;
 	struct api *api;
+	/* keep track of the number of struct market, for qsort */
 	int nbmarkets;
 	MYSQL *connector;
-	/* Put a lock for mysql call and API call (lastcall_t and lastcall modified by different threads */
+	/* Lock for MySQL, API calls, and modifs from different threads */
 	pthread_mutex_t bi_lock;
-	/* store the last api call to limit the call rate to 1/s max */
+	/* Last call to API (time) */
 	time_t lastcall_t;
+	/* Last call to API (request) : 1/s max*/
 	char *lastcall;
 };
 
 struct bittrex_info *bittrex_info();
+
+/*
+ * init connection to MySQL
+ */
 int conn_init(struct bittrex_info *bi);
 
 /*
