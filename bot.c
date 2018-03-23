@@ -536,9 +536,10 @@ void *runbot(void *b) {
 			sellorder = getorder(bbot->bi, selluuid);
 			if (sellorder && !sellorder->isopen) {
 				pthread_mutex_lock(&(bbot->bi->bi_lock));
-				bbot->trades_active--;
+				bbot->bi->trades_active--;
 				pthread_mutex_unlock(&(bbot->bi->bi_lock));
 				free_user_order(sellorder);
+				sellorder = NULL;
 				free(sell); sell = NULL;
 				free(selluuid); selluuid = NULL;
 				free(buyuuid); buyuuid = NULL;
@@ -561,7 +562,7 @@ void *runbot(void *b) {
 			last = getticker(bbot->bi, m);
 			if (last) {
 				/* btc available divided by the number of active bot markets */
-				btcqty = quantity(bbot) / (bbot->active_markets - bbot->trades_active);
+				btcqty = quantity(bbot) / (bbot->active_markets - bbot->bi->trades_active);
 				/* we use 99% of qty available */
 				btcqty *= 0.99;
 				/* qty of coin to be baught */
@@ -581,7 +582,7 @@ void *runbot(void *b) {
 					buy = NULL;
 				} else {
 					pthread_mutex_lock(&(bbot->bi->bi_lock));
-					bbot->trades_active++;
+					bbot->bi->trades_active++;
 					pthread_mutex_unlock(&(bbot->bi->bi_lock));
 					/* we let some time to bittrex */
 					sleep(3);
@@ -615,7 +616,11 @@ void *runbot(void *b) {
 							free(sell); sell = NULL;
 						} else {
 							printf("SELL %s at %.8f, quantity: %.8f, Gain (if sold): %.8f\n", m->marketname, last->last, buy->realqty, estimatedgain);
-							sellorder = getorder(bbot->bi, selluuid);
+							while (!sellorder) {
+								fprintf(stderr, "getorder: '%s' failed, retrying.\n",
+									selluuid);
+								sellorder = getorder(bbot->bi, selluuid);
+							}
 							pthread_mutex_lock(&(bbot->bi->bi_lock));
 							processed_order(bbot->bi->connector, buyuuid, estimatedgain);
 							pthread_mutex_unlock(&(bbot->bi->bi_lock));

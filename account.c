@@ -1062,9 +1062,12 @@ void free_user_orders(struct user_order **orders) {
 
 void free_user_order(struct user_order *o) {
 	if (o) {
-		free(o->orderuuid);
-		free(o->timestamp);
-		free(o->ordertype);
+		if (o->orderuuid)
+			free(o->orderuuid);
+		if (o->timestamp)
+			free(o->timestamp);
+		if (o->ordertype)
+			free(o->ordertype);
 		if (o->dateclosed)
 			free(o->dateclosed);
 		if (o->condition)
@@ -1075,7 +1078,6 @@ void free_user_order(struct user_order *o) {
 		free(o);
 	}
 }
-
 
 /*
  * Print functions below

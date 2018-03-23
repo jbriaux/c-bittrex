@@ -81,7 +81,7 @@
 #define GETWITHDRAWALHISTORY ACCOUNT_API_URL "getwithdrawalhistory?apikey="
 
 #define BUFFER_SIZE  (4096 * 1024)  /* 4MB  => this is way too much 1MB should be ok */
-#define MAX_ACTIVE_MARKETS 5 /* for the bot */
+#define MAX_ACTIVE_MARKETS 3 /* for the bot */
 
 #define MYSQL_PASSWD "Whr3PvCJ7cb"
 #define MYSQL_DB "bbot"
@@ -106,6 +106,8 @@ struct bittrex_info {
 	time_t lastcall_t;
 	/* Last call to API (request) : 1/s max*/
 	char *lastcall;
+	/* keep track of active threads */
+	int trades_active;
 };
 
 struct bittrex_info *bittrex_info();
