@@ -77,6 +77,8 @@ struct market *new_market() {
 	m->rsi = 0;
 	m->brsi = 0;
 	m->macd = 0;
+	m->macdsignal = 0;
+	m->macdhisto = 0;
 
 	pthread_mutex_init(&(m->indicators_lock), NULL);
 

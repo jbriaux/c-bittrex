@@ -78,6 +78,8 @@ struct market {
 	double rsi; // Wilder RSI with mobile moving averages
 	double brsi; // Bechu RSI
 	double macd; // MACD 14 28 9 with exponential moving averages
+	double macdsignal;
+	double macdhisto;
 	int bot_rank;
 
 	/*
