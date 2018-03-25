@@ -325,7 +325,7 @@ void *runbot(void *b) {
 	/* for Wilder RSI */
 	double mmi[14], mmd[14];
 	/* for MACD(14,28,9) */
-	double ema9[9], ema14[14], ema28[28];
+	double ema9[9], ema14[14], ema28[28], macd9[9];
 	/* lazy variables */
 	double w9 = (2.0/(9+1));
 	double w14 = (2.0/(14+1));
@@ -334,7 +334,7 @@ void *runbot(void *b) {
 	double tmp = 0, tmprsi = 0;
 	int i = 0, j = 0, k = 0;
 	/* previous is previous index in loop (13 when i = 0) */
-	int previous = 0;
+	int previous = 0, previousk = 0, previousj = 0;
 	double previousloss = 0;
 	int market_rank = m->bot_rank;
 
@@ -393,9 +393,30 @@ void *runbot(void *b) {
 	}
 
 	// EMA 28 for MACD
-	ema28[0] = ticks[28]->close;
+	double tmpema = 0;
+	for (i=0; i <= 27; i++) {
+		tmpema += ticks[i]->close;
+	}
+	ema28[0] = tmpema / 28;
+	//ema28[0] = ticks[28]->close;
+
 	for (i=1; i <= 27; i++)
 		ema28[i] = (ticks[28-i-1]->close - ema28[i-1])*w28 + ema28[i-1];
+
+	tmpema = 0;
+	for (i=0; i <= 13; i++) {
+		tmpema += val[i];
+	}
+	ema14[0] = tmpema / 14.0;
+
+	double tmpsignal = 0;
+	for (i=0; i <= 8; i++) {
+		tmpsignal += (ema14[i] - ema28[i]);
+	}
+	macd9[0] =  tmpsignal / 9.0;
+	for (i=1; i <= 8; i++) {
+		macd9[i] = (ema14[i] - ema28[i])*w9 + macd9[i-1]*(1-w9);
+	}
 	free_ticks(ticks);
 
 
@@ -405,7 +426,11 @@ void *runbot(void *b) {
 	 */
 	while (i < 15) {
 		begining = time(NULL);
+
 		previous = (i + 13) % 14;
+		previousk = (k + 8) % 9;
+		previousj = (j + 27) % 28;
+
 		/*
 		 * This loop polls ~1/s api for tick
 		 * We sell in these condition:
@@ -487,15 +512,10 @@ void *runbot(void *b) {
 			}
 		mmi[i] = (inc[previous] + mmi[previous]*(13.0))/14.0;
 		mmd[i] = (dec[previous] + mmd[previous]*(13.0))/14.0;
+		ema9[k] = (val[i] - ema9[previousk])*w9 + ema9[previousk];
 		ema14[i] = (val[i] - ema14[previous])*w14 + ema14[previous];
-		if (j == 0)
-			ema28[j] = (val[i] - ema28[27])*w28 + ema28[27];
-		if (j >= 1)
-			ema28[j] = (val[i] - ema28[j-1])*w28 + ema28[j-1];
-		if (k == 0)
-			ema9[k] = (val[i] - ema9[8])*w9 + ema9[8];
-		if (k >= 1)
-			ema9[k] = (val[i] - ema9[k-1])*w9 + ema9[k-1];
+		ema28[j] = (val[i] - ema28[previousj])*w28 + ema28[previousj];
+		macd9[k] = (ema14[k] - ema28[k])*w9 + macd9[previousk]*(1-w9);
 
 		/*
 		 * lock on the market as indicators will be shown (later) in a different thread.
@@ -504,6 +524,8 @@ void *runbot(void *b) {
 		m->rsi = 100 * (1-(1.0/(1+mmi[i]/mmd[i])));
 		m->brsi = 100 * sum(inc, 14)/(sum(inc,14)+sum(dec,14));
 		m->macd = ema14[i] - ema28[j];
+		m->macdsignal = macd9[k];
+		m->macdhisto = m->macd - m->macdsignal;
 		pthread_mutex_unlock(&(m->indicators_lock));
 
 		fprintf(stderr,
