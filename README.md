@@ -95,6 +95,15 @@ Account API Calls:
  ./bittrex --apikeyfile=path --currency=coin --getwithdrawalhistory
  ./bittrex --apikeyfile=path --currency=coin --getdeposithistory`
 ```
+The API keyfile must be on two lines containing only the key and the secret:
+```
+line1: apikey
+line2: apisecret
+```
+
+**If you intend to use the CLI to pass orders (or the bot), you must be sure that nobody can access this file.
+I strongly advise to not run this CLI/bot on a shared server if you are not the admin/root.**
+
 Examples of calls
 -------------
 * Valid buy:
