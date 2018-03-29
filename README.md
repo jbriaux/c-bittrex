@@ -207,6 +207,8 @@ And there were too many libraries to link (-lssl3 -lsmime3 -lnss3 -lnssutil3 -lp
 You may have noticed the -lpthread option, this is necessary for bot mode.
 In bot mode, the program starts by sorting markets by volume and select most intersting markets (tbh I need to change this part) and create one thread for each selected market.
 
+As in bot mode, multiple threads run in parallel, there are locks on specific area because mysqlclient is not thread safe, curl_global_init is not thread safe and some structures can be accessed(modfied) in parallel (bittrex_info struct which stores and share the number of active trades between threads).
+
 Init to do if you intend to develop for your own use
 -------------
 
