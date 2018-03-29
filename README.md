@@ -2,7 +2,7 @@ C-bittrex
 ==============
 Bittrex C API command line - **use at your own risk**.
 
-This is a C command line to use bittrex API. 
+This is a command line to use bittrex API.
 
 It also contains an example of a bot for minute trading based on RSI 14.
 
@@ -15,13 +15,14 @@ What's left to do:
 - add a makefile and automatic tests (tests added)
 - add a new call : --volumeonrange start_date end_date (buy and sell detailed volumes)
 
-Fixed recently:
+Fixed or added recently:
 -------------
 - store bot orders in a database: **done**
 - In case of crash or program termination, the bot needs to be aware of its last state and resume (waiting to buy or to sell and corresponding orders for each thread running): **done**
 - limit API call to 1/s per type of call : **done** (mostly usefull for the bot)
 - Protect MySQL connector and bittrex_info fields modified by bot threads with a lock: **done**
 - Valgrind on most calls (not the bot) **done**
+- added --getrsi and --getema in the CLI
 
 Installation
 -------------
