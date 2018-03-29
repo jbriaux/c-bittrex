@@ -127,30 +127,6 @@ int bot(struct bittrex_info *bi) {
 }
 
 /*
- * Return the sum of an array elements
- */
-static double sum(double *tab, int size) {
-	double total = 0;
-	int i = 0;
-
-	for (i=0; i < size; i++) {
-		total += tab[i];
-	}
-	return total;
-}
-
-/*
- * Init double array of given size to 0
- */
-static void tabinit(double *tab, int size) {
-	int i = 0;
-
-	for (i=0; i < size; i++) {
-		tab[i] = 0;
-	}
-}
-
-/*
  * we insert so state is always pending (and we don't want 7 args, does not fit in registers)
  * the quantity put in base is the real quantity baught without the fees
  * I buy 100BTC, we insert in base 99.75
@@ -310,31 +286,13 @@ void *runbot(void *b) {
 	struct market *m = bbot->market;
 	struct trade *buy=NULL, *sell=NULL;
 	struct user_order *order = NULL, *sellorder = NULL;
-	struct tick **ticks, **t;
-	struct ticker *last, *tmptick;
+	struct tick **hour_ticks = NULL, **minute_ticks = NULL;
+	struct ticker *last = NULL, *tmptick = NULL;
 	char *buyuuid = NULL, *selluuid = NULL;
-	/*
-	 * begining is for the loop
-	 * init is for the init part
-	 * if api took a long time to reply, we got innacurate data,
-	 * the thread must exit.
-	 */
-	time_t begining, init;
-	/* for Bechu RSI */
-	double val[14], inc[14], dec[14];
-	/* for Wilder RSI */
-	double mmi[14], mmd[14];
-	/* for MACD(14,28,9) */
-	double ema9[9], ema14[14], ema28[28], macd9[9];
-	/* lazy variables */
-	double w9 = (2.0/(9+1));
-	double w14 = (2.0/(14+1));
-	double w28 = (2.0/(28+1));
+	time_t begining;
 	double btcqty = 0, qty = 0;
-	double tmp = 0, tmprsi = 0;
-	int i = 0, j = 0, k = 0;
-	/* previous is previous index in loop (13 when i = 0) */
-	int previous = 0, previousk = 0, previousj = 0;
+	int i = 0;
+	int nbhourt = 0;
 	double previousloss = 0;
 	int market_rank = m->bot_rank;
 
@@ -345,123 +303,31 @@ void *runbot(void *b) {
 
 	// init tabs to 0
 	printf("Started bot for market: %s\n", m->marketname);
-	tabinit(val, 14);
-	tabinit(inc, 14);
-	tabinit(dec, 14);
-	tabinit(mmi, 14);
-	tabinit(mmd, 14);
-	tabinit(ema14, 14);
-	tabinit(ema28, 28);
 
-	init= time(NULL);
-	ticks = getticks(bbot->bi, m, "oneMin", 29);
-	/* getticks took more than 1 mn : considered invalid retry only once */
-	if (difftime(time(NULL), init) > 60) {
-		init= time(NULL);
-		free_ticks(ticks);
-		ticks = getticks(bbot->bi, m, "oneMin", 29);
-		if (difftime(time(NULL), init) > 60) {
-			fprintf(stderr,
-				"Init too long, exiting market thread: %s\n",
-				m->marketname);
-			return NULL;
-		}
-	}
-	for (i=13; i >= 0; i--) {
-		val[i] = ticks[13-i]->close;
-		ema14[i] =  val[i];
-		if (i <= 8)
-			ema9[i] = val[i];
-	}
-
-	// Rest of init (i=0) will be filled later(first tick in while loop above)
-	for (i=1; i <= 13; i++) {
-		tmp = val[i] - val[i-1];
-
-		if (tmp >= 0) { //inc
-			inc[i-1] = tmp;
-			dec[i-1] = 0;
-		} else { // dec
-			inc[i-1] = 0;
-			dec[i-1] = -1*tmp;
-		}
-		mmi[i] = (inc[i-1] + mmi[i-1]*(13.0))/14.0;
-		mmd[i] = (dec[i-1] + mmd[i-1]*(13.0))/14.0;
-		ema14[i] = (val[i] - ema14[i-1])*w14 + ema14[i-1];
-		if (i <= 8)
-			ema9[i] = (val[i] - ema9[i-1])*w9 + ema9[i-1];
-	}
-
-	// EMA 28 for MACD
-	double tmpema = 0;
-	for (i=0; i <= 27; i++) {
-		tmpema += ticks[i]->close;
-	}
-	ema28[0] = tmpema / 28;
-	//ema28[0] = ticks[28]->close;
-
-	for (i=1; i <= 27; i++)
-		ema28[i] = (ticks[28-i-1]->close - ema28[i-1])*w28 + ema28[i-1];
-
-	tmpema = 0;
-	for (i=0; i <= 13; i++) {
-		tmpema += val[i];
-	}
-	ema14[0] = tmpema / 14.0;
-
-	double tmpsignal = 0;
-	for (i=0; i <= 8; i++) {
-		tmpsignal += (ema14[i] - ema28[i]);
-	}
-	macd9[0] =  tmpsignal / 9.0;
-	for (i=1; i <= 8; i++) {
-		macd9[i] = (ema14[i] - ema28[i])*w9 + macd9[i-1]*(1-w9);
-	}
-	free_ticks(ticks);
-
-
-	i = 0;
 	/*
 	 * Poll every minutes, warning: loop never ends.
 	 */
 	while (i < 15) {
 		begining = time(NULL);
 
-		previous = (i + 13) % 14;
-		previousk = (k + 8) % 9;
-		previousj = (j + 27) % 28;
-
 		/*
-		 * This loop polls ~1/s api for tick
+		 * This loop polls ~5/s api for tick
 		 * We sell in these condition:
 		 * - RSI > 70 and gain > 0
 		 * - RSI not > 70 but gain > 1%
 		 */
 		while (difftime(time(NULL), begining) < 60) {
-			/*
-			 * Free previous tick
-			 * We keep the last tick in case getticker fails after this loop
-			 */
+			minute_ticks = getticks_rsi_mma_interval_period(bbot->bi, m, "oneMin", 14);
 			if (tmptick) {
 				free(tmptick);
 				tmptick = NULL;
 			}
 			if ((tmptick = getticker(bbot->bi, m))) {
-				tmp = tmptick->last - val[previous];
-				if (tmp >= 0) {
-					inc[previous] = tmp;
-					dec[previous] = 0;
-				} else {
-					inc[previous] = 0;
-					dec[previous] = -1*tmp;
-				}
-				mmi[i] = (inc[previous] + mmi[previous]*(13.0))/14.0;
-				mmd[i] = (dec[previous] + mmd[previous]*(13.0))/14.0;
-				tmprsi =  100 * (1.0-(1.0/(1.0+mmi[i]/mmd[i])));
 				if (buy && buy->completed) {
 					double sellminusfee = (tmptick->last * buy->realqty) * ( 1 - 0.25/100);
 					double estimatedgain = sellminusfee - buy->btcpaid;
-					if ((estimatedgain > 0 && tmprsi >= 70) || (estimatedgain >= buy->btcpaid / 100)) {
+					if ((estimatedgain > 0 && minute_ticks[m->lastnbticks-1]->rsi_ema >= 70) ||
+					    (estimatedgain >= buy->btcpaid / 100)) {
 						if (!sell) {
 							sell = new_trade(m, LIMIT, 1, tmptick->last, IMMEDIATE_OR_CANCEL, NONE, 0, SELL);
 							if (!(selluuid = selllimit(bbot->bi, m, buy->realqty, tmptick->last))) {
@@ -485,55 +351,52 @@ void *runbot(void *b) {
 							}
 						}
 					} else {
-						if (previousloss != estimatedgain && tmprsi >= 70) {
+						if (previousloss != estimatedgain && minute_ticks[m->lastnbticks-1]->rsi_ema >= 70) {
 							printf("Warning, RSI(tmp) of %s over 70 but no opportunity found (loss: %.8f)\n", m->marketname, estimatedgain);
 							previousloss = estimatedgain;
 						}
 					}
 				}
+			}
+			free_ticks(minute_ticks);
+			if (!buy)
+				sleep(5);
+			else
 				sleep(1);
-			}
 		}
-		t = getticks(bbot->bi, m, "oneMin", 1);
-		if (t && t[0]) {
-			val[i] = t[0]->close;
-			free_ticks(t);
-			t = NULL;
-		} else {
-			val[i] = tmptick->last;
+
+		if (hour_ticks)
+			free_ticks(hour_ticks);
+		if (tmptick) {
+			free(tmptick);
+			tmptick = NULL;
 		}
-		tmp = val[i] - val[previous];
-		if (tmp >= 0) {
-			inc[previous] = tmp;
-			dec[previous] = 0;
-		} else {
-			inc[previous] = 0;
-			dec[previous] = -1*tmp;
-			}
-		mmi[i] = (inc[previous] + mmi[previous]*(13.0))/14.0;
-		mmd[i] = (dec[previous] + mmd[previous]*(13.0))/14.0;
-		ema9[k] = (val[i] - ema9[previousk])*w9 + ema9[previousk];
-		ema14[i] = (val[i] - ema14[previous])*w14 + ema14[previous];
-		ema28[j] = (val[i] - ema28[previousj])*w28 + ema28[previousj];
-		macd9[k] = (ema14[k] - ema28[k])*w9 + macd9[previousk]*(1-w9);
+
+		hour_ticks = getticks_rsi_mma_interval_period(bbot->bi, m, "Hour", 14);
+		nbhourt = m->lastnbticks;
+		minute_ticks = getticks_rsi_mma_interval_period(bbot->bi, m, "oneMin", 14);
 
 		/*
 		 * lock on the market as indicators will be shown (later) in a different thread.
 		 */
 		pthread_mutex_lock(&(m->indicators_lock));
-		m->rsi = 100 * (1-(1.0/(1+mmi[i]/mmd[i])));
-		m->brsi = 100 * sum(inc, 14)/(sum(inc,14)+sum(dec,14));
-		m->macd = ema14[i] - ema28[j];
-		m->macdsignal = macd9[k];
-		m->macdhisto = m->macd - m->macdsignal;
+		m->rsi = minute_ticks[m->lastnbticks-1]->rsi_ema;
 		pthread_mutex_unlock(&(m->indicators_lock));
 
+		while (!tmptick) {
+			tmptick = getticker(bbot->bi, m);
+
+		}
+
 		fprintf(stderr,
-			"Market: %s\tWilder RSI: %.8f\tBechu RSI: %.8f\tMACD: %.8f\n",
+			"Market: %s\tRSI(14,mn): %.8f\tRSI(14,h): %.8f\tlast: %.8f\n",
 			m->marketname,
 			m->rsi,
-			m->brsi,
-			m->macd);
+			hour_ticks[nbhourt-1]->rsi_ema,
+			tmptick->last);
+
+		free(tmptick);
+		tmptick = NULL;
 
 		/* refresh buy order state */
 		if (buy && !buy->completed) {
@@ -569,7 +432,7 @@ void *runbot(void *b) {
 					printf("Market(%s) lost rank, exiting\n", m->marketname);
 					return NULL;
 				} else {
-					printf("Market(%s) rank increased! Good, continuing.", m->marketname);
+					printf("Market(%s) rank increased! Good, continuing.\n", m->marketname);
 				}
 			}
 		}
@@ -580,7 +443,7 @@ void *runbot(void *b) {
 		 * rsi != 0 in case of init failure (need to confirm it is fixed)
 		 * but should be removed
 		 */
-		if (m->rsi <= 30 && m->rsi != 0 && !buy && !sell) {
+		if (m->rsi < 30 && m->rsi != 0 && !buy && !sell && hour_ticks[nbhourt-1]->rsi_ema <= 60) {
 			last = getticker(bbot->bi, m);
 			if (last) {
 				/* btc available divided by the number of active bot markets */
@@ -654,13 +517,9 @@ void *runbot(void *b) {
 				}
 			}
 		}
-		i++; j++; k++;
-		if (i == 14) // for RSI
+		i++;
+		if (i == 14)
 			i = 0;
-		if (j == 28) // for EMA28 (macd)
-			j = 0;
-		if (k == 9) // for EMA 9
-			k = 0;
 	}
 	return NULL;
 }

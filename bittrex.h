@@ -81,11 +81,14 @@
 #define GETWITHDRAWALHISTORY ACCOUNT_API_URL "getwithdrawalhistory?apikey="
 
 #define BUFFER_SIZE  (4096 * 1024)  /* 4MB  => this is way too much 1MB should be ok */
-#define MAX_ACTIVE_MARKETS 3 /* for the bot */
+#define MAX_ACTIVE_MARKETS 5 /* for the bot */
 
-#define MYSQL_PASSWD "Whr3PvCJ7cb"
-#define MYSQL_DB "bbot"
-#define MYSQL_USER "bbot_user"
+#define MYSQL_PASSWD	"Whr3PvCJ7cb"
+#define MYSQL_DB	"bbot"
+#define MYSQL_USER	"bbot_user"
+
+#define ASCENDING	1
+#define DESCENDING	0
 
 struct write_result
 {

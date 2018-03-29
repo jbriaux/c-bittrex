@@ -187,14 +187,18 @@ struct ticker *getticker(struct bittrex_info *bi, struct market *m) {
  * API returns old ticks to new ticks (result[0] is oldest)
  * Here ticks are sorted reverse: new to old
  */
-struct tick **getticks(struct bittrex_info *bi, struct market *m, char *interval, int nbtick) {
+struct tick **getticks(struct bittrex_info *bi,
+		       struct market *m,
+		       char *interval,
+		       int nbtick,
+		       int sort) {
 	json_t *root, *result, *raw;
 	char *url;
 	int size,i;
 	struct tick **ticks, *tick;
 
-	if (!m || !m->marketname) {
-		fprintf(stderr, "getticks: invalid market specified.\n");
+	if (!m || !m->marketname || (sort != ASCENDING && sort != DESCENDING)) {
+		fprintf(stderr, "getticks: invalid parameter.\n");
 		return NULL;
 	}
 
@@ -213,13 +217,20 @@ struct tick **getticks(struct bittrex_info *bi, struct market *m, char *interval
 	result = json_object_get(root,"result");
 
 	size = json_array_size(result);
+	m->lastnbticks = size;
 	if (size == 0)
 		return NULL;
+
+	if (nbtick == 0)
+		nbtick = size;
 
 	ticks = malloc((nbtick+1) * sizeof(struct tick*));
 
 	for (i=0; i < size && i < nbtick; i++) {
-		raw = json_array_get(result, size-i-1);
+		if (sort == ASCENDING)
+			raw = json_array_get(result, size-i-1);
+		if (sort == DESCENDING)
+			raw = json_array_get(result, i);
 		tick = malloc(sizeof(struct tick));
 		tick->open = json_real_value(json_object_get(raw, "C"));
 		tick->high = json_real_value(json_object_get(raw, "H"));
@@ -666,6 +677,281 @@ int getorderbook(struct bittrex_info *bi, struct market *m, char *type) {
 	return 0;
 }
 
+struct tick **reverse_ticks(struct tick **ticks, int size) {
+	struct tick **reverse;
+	int i;
+
+	reverse = malloc((size+1) * sizeof(struct tick*));
+	for (i = 0; i < size; i++) {
+		reverse[i] = malloc(sizeof(struct tick));
+		reverse[i]->open = ticks[size-i-1]->open;
+		reverse[i]->high = ticks[size-i-1]->high;
+		reverse[i]->low = ticks[size-i-1]->low;
+		reverse[i]->close = ticks[size-i-1]->close;
+		reverse[i]->volume = ticks[size-i-1]->volume;
+		reverse[i]->btcval = ticks[size-i-1]->btcval;
+		if (ticks[size-i-1]->timestamp != NULL) {
+			reverse[i]->timestamp = malloc(strlen(ticks[size-i-1]->timestamp)+1);
+			reverse[i]->timestamp = strcpy(reverse[i]->timestamp, ticks[size-i-1]->timestamp);
+		}
+	}
+	reverse[i] = NULL;
+	free_ticks(ticks);
+	return reverse;
+}
+
+static double sum(double *array, int index, int size) {
+	int i = index, j;
+	double tmp = 0.0;
+
+	for (j=0; j < size; j++) {
+		tmp += array[i];
+		i++;
+	}
+	return tmp;
+}
+
+/*
+ * RSI with normal averages
+ */
+double rsi_interval_period(struct bittrex_info *bi, struct market *m, char *interval, int period) {
+	struct tick **ticks = NULL;
+	double *gain, *loss;
+	double *avg_gain, *avg_loss;
+	double *rs, *rsi;
+	double res;
+	int i, k = 0;
+
+	gain = malloc((2 * period - 1) * sizeof(double));
+	loss = malloc((2 * period - 1) * sizeof(double));
+	avg_gain = malloc(period * sizeof(double));
+	avg_loss = malloc(period * sizeof(double));
+	rs = malloc(period * sizeof(double));
+	rsi = malloc(period * sizeof(double));
+
+	/*
+	 * Wait until API replies
+	 */
+	while (!ticks)
+		ticks = getticks(bi, m, interval, period*2, DESCENDING);
+
+	for (i=1; i < period * 2 ; i++) {
+		gain[i-1] = (ticks[i]->close - ticks[i-1]->close > 0) ?
+			ticks[i]->close - ticks[i-1]->close : 0;
+		loss[i-1] = (ticks[i]->close - ticks[i-1]->close < 0) ?
+			-1.0*(ticks[i]->close - ticks[i-1]->close) : 0;
+	}
+
+	for (k = 0; k < period; k++) {
+		avg_gain[k] = sum(gain, k, period) / period;
+		avg_loss[k] = sum(loss, k, period) / period;
+		rs[k] = avg_gain[k] / avg_loss[k];
+		rsi[k] = 100 - 100/(1.0+rs[k]);
+	}
+	res = rsi[k-1];
+
+	free_ticks(ticks);
+	free(gain);
+	free(loss);
+	free(avg_gain);
+	free(avg_loss);
+	free(rs);
+	free(rsi);
+
+	return res;
+}
+
+/*
+ * RSI with modified moving average (tradingview values)
+ */
+double rsi_mma_interval_period(struct bittrex_info *bi, struct market *m, char *interval, int period) {
+	struct tick **ticks = NULL;
+	double *gain, *loss;
+	double *avg_gain, *avg_loss;
+	double *rs, *rsi;
+	double res;
+	double weight = 1.0/(period);
+	int i, k = 0;
+
+	/*
+	 * Wait until API replies
+	 */
+	while (!ticks)
+		ticks = getticks(bi, m, interval, 0, DESCENDING);
+
+	if (m->lastnbticks == 0)
+		return -1;
+
+	gain = malloc((m->lastnbticks - 1) * sizeof(double));
+	loss = malloc((m->lastnbticks - 1)* sizeof(double));
+	avg_gain = malloc(m->lastnbticks * sizeof(double));
+	avg_loss = malloc(m->lastnbticks * sizeof(double));
+	rs = malloc(m->lastnbticks * sizeof(double));
+	rsi = malloc(m->lastnbticks * sizeof(double));
+
+	for (i = 1; i < m->lastnbticks; i++) {
+		gain[i-1] = (ticks[i]->close - ticks[i-1]->close > 0) ?
+			ticks[i]->close - ticks[i-1]->close : 0;
+		loss[i-1] = (ticks[i]->close - ticks[i-1]->close < 0) ?
+			-1.0*(ticks[i]->close - ticks[i-1]->close) : 0;
+	}
+
+	/* gain[0] and loss[0] are 0 and must be ignored */
+	avg_gain[0] = sum(gain, 1, period) / period;
+	avg_loss[0] = sum(loss, 1, period) / period;
+	rs[0] = avg_gain[0] / avg_loss[0];
+	rsi[0] = 100 - 100/(1.0+rs[0]);
+	for (k = 1; k < (m->lastnbticks-period-1); k++) {
+		avg_gain[k] =  gain[period+k] * weight + avg_gain[k-1]*(1-weight);
+		avg_loss[k] =  loss[period+k] * weight + avg_loss[k-1]*(1-weight);
+		rs[k] = avg_gain[k] / avg_loss[k];
+		rsi[k] = 100 - 100/(1.0+rs[k]);
+		printf("tick of %d, %.8f\t%.8f\t\n", k+period+1,ticks[k+period+1]->close, rsi[k]);
+	}
+
+	/* last candle returned, vary often (depends on current close) */
+	res = rsi[k-1];
+	free_ticks(ticks);
+	free(gain);
+	free(loss);
+	free(avg_gain);
+	free(avg_loss);
+	free(rs);
+	free(rsi);
+
+	return res;
+}
+
+struct tick **getticks_rsi_mma_interval_period(struct bittrex_info *bi,
+						struct market *m,
+						char *interval,
+						int period)
+{
+	struct tick **ticks = NULL;
+	double *gain, *loss;
+	double *avg_gain, *avg_loss;
+	double *rs, *rsi;
+	double weight = 1.0/(period);
+	int i, k = 0;
+
+	/*
+	 * Wait until API replies
+	 */
+	while (!ticks)
+		ticks = getticks(bi, m, interval, 0, DESCENDING);
+
+	if (m->lastnbticks == 0)
+		return NULL;
+
+	gain = malloc((m->lastnbticks - 1) * sizeof(double));
+	loss = malloc((m->lastnbticks - 1)* sizeof(double));
+	avg_gain = malloc(m->lastnbticks * sizeof(double));
+	avg_loss = malloc(m->lastnbticks * sizeof(double));
+	rs = malloc(m->lastnbticks * sizeof(double));
+	rsi = malloc(m->lastnbticks * sizeof(double));
+
+	for (i = 1; i < m->lastnbticks; i++) {
+		gain[i-1] = (ticks[i]->close - ticks[i-1]->close > 0) ?
+			ticks[i]->close - ticks[i-1]->close : 0;
+		loss[i-1] = (ticks[i]->close - ticks[i-1]->close < 0) ?
+			-1.0*(ticks[i]->close - ticks[i-1]->close) : 0;
+	}
+
+	/* gain[0] and loss[0] are 0 and must be ignored */
+	avg_gain[0] = sum(gain, 1, period) / period;
+	avg_loss[0] = sum(loss, 1, period) / period;
+	rs[0] = avg_gain[0] / avg_loss[0];
+	rsi[0] = 100 - 100/(1.0+rs[0]);
+	for (k = 1; k < (m->lastnbticks-period-1); k++) {
+		avg_gain[k] =  gain[period+k] * weight + avg_gain[k-1]*(1-weight);
+		avg_loss[k] =  loss[period+k] * weight + avg_loss[k-1]*(1-weight);
+		rs[k] = avg_gain[k] / avg_loss[k];
+		rsi[k] = 100 - 100/(1.0+rs[k]);
+		ticks[k+period+1]->rsi_ema = rsi[k];
+		/* printf("tick of %d, %.8f\t%.8f\t\n", k+period+1,ticks[k+period+1]->close, rsi[k]); */
+	}
+
+	free(gain);
+	free(loss);
+	free(avg_gain);
+	free(avg_loss);
+	free(rs);
+	free(rsi);
+
+	return ticks;
+}
+
+double *ema_interval_period(struct bittrex_info *bi, struct market *m, char *interval, int period) {
+	struct tick **ticks = NULL;
+	double weight = (2.0/(period+1));
+	double *moving_average = NULL;
+	int i, j = 0;
+
+	if (!(moving_average = malloc(period * sizeof(double))))
+		return NULL;
+	moving_average[0] = 0;
+
+	/*
+	 * Wait until API replies
+	 */
+	while (!ticks)
+		ticks = getticks(bi, m, interval, period*2, DESCENDING);
+
+	/*
+	 * init EMA(0)
+	 */
+	for (i = 0; i < period; i++) {
+		moving_average[0] += ticks[i]->close;
+		j++;
+	}
+	moving_average[0] /= period;
+
+	for (i = 1; i < period; i++) {
+		moving_average[i] = ticks[j]->close * weight + moving_average[i-1]*(1-weight);
+		printf("%.8f\n", moving_average[i]);
+		j++;
+	}
+
+	free_ticks(ticks);
+	return moving_average;
+}
+
+double *mma_interval_period(struct bittrex_info *bi, struct market *m, char *interval, int period) {
+	struct tick **ticks = NULL;
+	double weight = (1.0/period);
+	double *moving_average = NULL;
+	int i, j = 0;
+
+	if (!(moving_average = malloc(period * sizeof(double))))
+		return NULL;
+	moving_average[0] = 0;
+
+	/*
+	 * Wait until API replies
+	 */
+	while (!ticks)
+		ticks = getticks(bi, m, interval, period*2, DESCENDING);
+
+	/*
+	 * init EMA(0)
+	 */
+	for (i = 0; i < period; i++) {
+		moving_average[0] += ticks[i]->close;
+		j++;
+	}
+	moving_average[0] /= period;
+
+	for (i = 1; i < period; i++) {
+		moving_average[i] = ticks[j]->close * weight + moving_average[i-1]*(1-weight);
+		printf("%.8f\n", moving_average[i]);
+		j++;
+	}
+
+	free_ticks(ticks);
+	return moving_average;
+}
+
+
 /*
  * FREE functions
  */
@@ -928,6 +1214,7 @@ void printtick(struct tick *t) {
 		printf("Close:\t\t%.8f\n", t->close);
 		printf("Volume:\t\t%.8f\n", t->volume);
 		printf("BTC value:\t%.8f\n", t->btcval);
-		printf("Timestamp:\t%s\n\n", t->timestamp);
+		if (t->timestamp)
+			printf("Timestamp:\t%s\n\n", t->timestamp);
 	}
 }

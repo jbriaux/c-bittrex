@@ -52,6 +52,8 @@ static void print_help(char *arg) {
 		printf(" ./bittrex --market=marketname --getticker||--getmarketsummary||--getmarkethistory\n");
 		printf(" ./bittrex --market=marketname --getorderbook both|buy|sell\n");
 		printf(" ./bittrex --market=marketname --getticks oneMin|fiveMin|thirtyMin|Hour\n");
+		printf(" ./bittrex --market=marketname --getema oneMin|fiveMin|thirtyMin|Hour,period\n");
+		printf(" ./bittrex --market=marketname --getrsi oneMin|fiveMin|thirtyMin|Hour,period\n");
 		printf("Market API Calls:\n");
 		printf(" ./bittrex --apikeyfile=path --market=marketname --buylimit|--selllimit|--tradebuy|--tradesell quantity,rate\n");
 		printf(" ./bittrex --apikeyfile=path --market=marketname --cancel orderuuid\n");
@@ -145,9 +147,12 @@ int main(int argc, char *argv[]) {
 	char *tickinterval = NULL, *uuid = NULL, *destaddress = NULL;
 	char *da = NULL;
 	char *paymentid = NULL;
+	char *interval = NULL;
 	char opt, key[33], secret[33];
 	char buf[255], buf2[32];
 	double quantity = -1, rate = -1;
+	double *ma;
+	int period = 0;
 	int opt_index;
 	int api_required = 0, market_required = 0, currency_required = 0;
 	static int action_flag = -1;
@@ -190,6 +195,10 @@ int main(int argc, char *argv[]) {
 		{"getwithdrawalhistory",no_argument,		0,  10 }, // currency optional
 		{"getdeposithistory",	no_argument,		0,  10 }, // currency optional
 		{"getopenorders",	no_argument,		0,  11 }, // currency optional
+
+		/* indicators */
+		{"getema",		required_argument,	0,  13 }, // exponantial moving average
+		{"getrsi",		required_argument,	0,  13 }, // RSI
 
 		/* help */
 		{"help",		no_argument,		0, 'h'},
@@ -241,7 +250,7 @@ int main(int argc, char *argv[]) {
 			/* to test with %[^,] fixme? */
 			if (nbc(optarg) != 1) {
 				fprintf(stderr, "Invalid numerical argument detected\n");
-				fprintf(stderr, "Sorry but numbers must use a perdiod '.' (US/UK style) not a comma ','");
+				fprintf(stderr, "Sorry but numbers must use a period '.' (US/UK style) not a comma ','");
 				fprintf(stderr, "(rest of the world style)\n");
 				exit(EINVAL);
 			}
@@ -307,6 +316,18 @@ int main(int argc, char *argv[]) {
 		case 11: //getopenorders
 			api_required = 1;
 			action_flag = 11;
+			break;
+		case 13:
+			market_required = 1;
+			call = argv[optind-2];
+			action_flag = 13;
+			if (nbc(optarg) == 1) {
+				sscanf(optarg, "%[^,],%d", buf, &period);
+				interval = malloc(strlen(buf) + 1);
+				strcpy(interval, buf);
+				if (!tickInterval_is_valid(interval))
+					print_help(call);
+			}
 			break;
 		case 'a':
 			apikey = optarg;
@@ -418,7 +439,8 @@ int main(int argc, char *argv[]) {
 		}
 		break;
 	case 2:	/* getticks */
-		printticks((ticks = getticks(bi, market, tickinterval, 100)));
+		printf("Newest to oldest\n");
+		printticks((ticks = getticks(bi, market, tickinterval, 100, ASCENDING)));
 		free_ticks(ticks);
 		break;
 	case 3:	/* trades */
@@ -515,6 +537,19 @@ int main(int argc, char *argv[]) {
 		getmarketsummaries(bi);
 		bi->currencies = getcurrencies(bi);
 		bot(bi);
+		break;
+	case 13: /* EMA */
+		if (strcmp(call, "--getema") == 0) {
+			ma = ema_interval_period(bi, market, interval, period);
+			printf("%.8f\n", ma[period-1]);
+			free(ma);
+		}
+		if (strcmp(call, "--getrsi") == 0) {
+			printf("%.4f\n", rsi_mma_interval_period(bi, market, interval, period));
+			//getticks_rsi_mma_interval_period(bi, market, interval, period);
+			//rsi_interval_period(bi, market, interval, period);
+		}
+		free(interval);
 		break;
 	default:
 		printf("No command specified.\n./bittrex --help for help\n");

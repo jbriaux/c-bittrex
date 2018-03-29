@@ -87,6 +87,10 @@ struct market {
 	 * rsi is updated once per mn
 	 */
 	pthread_mutex_t indicators_lock;
+	/*
+	 * keep track of ticks (vary from specified interval)
+	 */
+	int lastnbticks;
 };
 
 /*
@@ -100,6 +104,9 @@ struct tick {
 	double volume;
 	double btcval;
 	char *timestamp;
+	double rsi;
+	double rsi_mma;
+	double rsi_ema;
 };
 
 /*
@@ -155,7 +162,7 @@ struct ticker *getticker(struct bittrex_info *bi, struct market *m);
  * Interval can be oneMin fiveMin thirtyMin Hour
  * nbtick is mostly 14 (for RSI)
  */
-struct tick **getticks(struct bittrex_info *bi, struct market *m, char *interval, int nbtick);
+struct tick **getticks(struct bittrex_info *bi, struct market *m, char *interval, int nbtick, int sort);
 
 /*
  * fetch all available currencies
@@ -201,6 +208,24 @@ struct market *getmarket(struct market **markets, char *marketname);
  * Just do allocation and set pointers fields to NULL
  */
 struct market *new_market();
+
+/*
+ * RSI(period)
+ * Interval: oneMin|fiveMin|thirtyMin|Hour
+ */
+double rsi_interval_period(struct bittrex_info *bi, struct market *m, char *interval, int period);
+double rsi_mma_interval_period(struct bittrex_info *bi, struct market *m, char *interval, int period);
+
+
+/*
+ * Exponential Moving Average (period)
+ * Interval: oneMin|fiveMin|thirtyMin|Hour
+ */
+double *ema_interval_period(struct bittrex_info *bi, struct market *m, char *interval, int period);
+struct tick **getticks_rsi_mma_interval_period(struct bittrex_info *bi,
+					       struct market *m,
+					       char *interval,
+					       int period);
 
 
 /*
