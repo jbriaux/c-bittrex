@@ -7,6 +7,11 @@ This is a command line to use bittrex API.
 It also contains an example of a bot for minute trading based on RSI 14.
 
 The API is functional, the bot mode is still experimental **use at your own risk**.
+Moreover, during my tests I discovered that bittrex API replies with delayed candles (getticks), between 1 and 5mn delay. So, again, **use at your own risk**
+
+I suggest to use the CLI to script some monitoring on your favorite coins/market and put it in a crontab.
+So if a long term opportunity shows up you can get an email without checking all the time the candles :)
+
 
 Todo
 -------------
@@ -14,6 +19,7 @@ What's left to do:
 - add a thread scanning input for bot mode in order to be able to stop it properly (so far in bot mode, you need to kill with Ctrl+C)
 - add a makefile and automatic tests (tests added)
 - add a new call : --volumeonrange start_date end_date (buy and sell detailed volumes)
+
 
 Fixed or added recently:
 -------------
