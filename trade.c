@@ -22,6 +22,7 @@
  * SOFTWARE.
  */
 
+#include <string.h>
 #include "trade.h"
 
 struct trade *new_trade(struct market *m,
@@ -31,7 +32,8 @@ struct trade *new_trade(struct market *m,
 			time_type timeineffect,
 			condition_type condition,
 			int target,
-			int bos)
+			int bos,
+			char *uuid)
 {
 	struct trade *trade;
 
@@ -45,6 +47,18 @@ struct trade *new_trade(struct market *m,
 	trade->target = target;
 	trade->buyorsell = bos;
 	trade->completed = 0;
+	if (uuid) {
+		trade->uuid = malloc(strlen(uuid) +1);
+		trade->uuid = strcpy(trade->uuid, uuid);
+	}
 
 	return trade;
+}
+
+void free_trade(struct trade *t) {
+	if (t) {
+		if (t->uuid)
+			free(t->uuid);
+		free(t);
+	}
 }

@@ -50,6 +50,7 @@ struct trade {
 	int target;
 	int buyorsell;
 	int completed;
+	char *uuid;
 };
 
 struct trade *new_trade(struct market *m,
@@ -58,5 +59,6 @@ struct trade *new_trade(struct market *m,
 			double rate,
 			time_type timeineffect,
 			condition_type condition,
-			int target, int bos);
+			int target, int bos, char *uuid);
 
+void free_trade(struct trade *t);

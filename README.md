@@ -1,12 +1,17 @@
-C-bittrex  
+C-bittrex
 ==============
 Bittrex C API command line - **use at your own risk**.
 
-This is a C command line to use bittrex API. 
+This is a command line to use bittrex API.
 
 It also contains an example of a bot for minute trading based on RSI 14.
 
 The API is functional, the bot mode is still experimental **use at your own risk**.
+Moreover, during my tests I discovered that bittrex API replies with delayed candles (getticks), between 1 and 5mn delay. So, again, **use at your own risk**
+
+I suggest to use the CLI to script some monitoring on your favorite coins/market and put it in a crontab.
+So if a long term opportunity shows up you can get an email without checking all the time the candles :)
+
 
 Todo
 -------------
@@ -15,20 +20,22 @@ What's left to do:
 - add a makefile and automatic tests (tests added)
 - add a new call : --volumeonrange start_date end_date (buy and sell detailed volumes)
 
-Fixed recently:
+
+Fixed or added recently:
 -------------
 - store bot orders in a database: **done**
 - In case of crash or program termination, the bot needs to be aware of its last state and resume (waiting to buy or to sell and corresponding orders for each thread running): **done**
 - limit API call to 1/s per type of call : **done** (mostly usefull for the bot)
 - Protect MySQL connector and bittrex_info fields modified by bot threads with a lock: **done**
 - Valgrind on most calls (not the bot) **done**
+- added --getrsi and --getema in the CLI
 
 Installation
 -------------
 
 You need to have jansson installed on your OS (http://www.digip.org/jansson/) and MySQL (server + client).
 
-On CentOS: 
+On CentOS:
 ```
 yum install jansson.x86_64
 Optional: jansson-devel.x86_64
@@ -57,7 +64,7 @@ Bittrex API Documentation
 
 **API 2.0 is BETA, use at your own risk**
 
-For V2 API, I used this page as reference: 
+For V2 API, I used this page as reference:
 https://github.com/dparlevliet/node.bittrex.api#supported-v2-api-methods
 
 Usage
@@ -88,6 +95,15 @@ Account API Calls:
  ./bittrex --apikeyfile=path --currency=coin --getwithdrawalhistory
  ./bittrex --apikeyfile=path --currency=coin --getdeposithistory`
 ```
+The API keyfile must be on two lines containing only the key and the secret:
+```
+line1: apikey
+line2: apisecret
+```
+
+**If you intend to use the CLI to pass orders (or the bot), you must be sure that nobody can access this file.
+I strongly advise to not run this CLI/bot on a shared server if you are not the admin/root.**
+
 Examples of calls
 -------------
 * Valid buy:
@@ -190,6 +206,8 @@ And there were too many libraries to link (-lssl3 -lsmime3 -lnss3 -lnssutil3 -lp
 
 You may have noticed the -lpthread option, this is necessary for bot mode.
 In bot mode, the program starts by sorting markets by volume and select most intersting markets (tbh I need to change this part) and create one thread for each selected market.
+
+As in bot mode, multiple threads run in parallel, there are locks on specific area because mysqlclient is not thread safe, curl_global_init is not thread safe and some structures can be accessed(modfied) in parallel (bittrex_info struct which stores and share the number of active trades between threads).
 
 Init to do if you intend to develop for your own use
 -------------

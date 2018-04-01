@@ -7,8 +7,8 @@ CREATE TABLE Orders (
        Quantity DECIMAL(16,8),
        Rate DECIMAL(16,8),
        BotType ENUM('buy','sell'),
-       BotState ENUM('pending','processed'),
-       BtcPaid  DECIMAL(16,8),
+       BotState ENUM('pending','processed', 'cancelled'),
+       Btc  DECIMAL(16,8),
        Gain DECIMAL(16,8),
        PRIMARY KEY ( OrderID )
 );

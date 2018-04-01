@@ -25,6 +25,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <string.h>
+#include <errno.h>
 
 #include "lib/jansson/src/jansson.h"
 #include "lib/hmac/hmac_sha2.h"
@@ -127,56 +128,55 @@ int bot(struct bittrex_info *bi) {
 }
 
 /*
- * we insert so state is always pending (and we don't want 7 args, does not fit in registers)
- * the quantity put in base is the real quantity baught without the fees
- * I buy 100BTC, we insert in base 99.75
+ * Order insertion: state is pending
+ * UUID: UUID of the order
+ * type: buy or sell
+ * qty: quantity baught or sold after fees (0.25% both case)
+ * mname: market name
+ * rate: rate the order was baught
+ * btcpaid: BTC paid or
+ *
  */
-static int insert_order(MYSQL *connector, char *UUID, char *mname, double qty, double rate, double btcpaid) {
-	char *query;
-	char qtystr[32], ratestr[32], btcpaidstr[32];
+static int insert_order(MYSQL *connector, char *UUID, char *type, char *mname, double qty, double rate, double btc) {
+	char *query = NULL;
+	char qtystr[32], ratestr[32], btcstr[32];
 	int query_status;
 
 	sprintf(qtystr, "%.8f", qty);
 	sprintf(ratestr, "%.8f", rate);
-	sprintf(btcpaidstr, "%.8f", btcpaid);
-	query = malloc(strlen("INSERT INTO Orders (UUID,Market,Quantity,Rate,BotType,BotState,BtcPaid) ") +
-		       strlen("VALUES (") +
-		       strlen(UUID) + 3 +
-		       strlen(mname) + 3 +
-		       strlen(qtystr) + 3 +
-		       strlen(ratestr) + 3 +
-		       strlen("'buy'") +
-		       strlen("pending") + 3 +
-		       strlen(btcpaidstr) + 3 +
-		       strlen(");") + 1);
+	sprintf(btcstr, "%.8f", btc);
+
+	if (!(query = malloc(1024)))
+		return -ENOMEM;
+
 	query[0] = '\0';
-	query = strcat(query, "INSERT INTO Orders (UUID,Market,Quantity,Rate,BotType,BotState,BtcPaid) ");
+	query = strcat(query, "INSERT INTO Orders (UUID,Market,Quantity,Rate,BotType,BotState,Btc) ");
 	query = strcat(query, "VALUES (");
 	query = strcat(query, "'"); query = strcat(query, UUID); query = strcat(query, "',");;
 	query = strcat(query, "'"); query = strcat(query, mname); query = strcat(query, "',");
 	query = strcat(query, "'"); query = strcat(query, qtystr); query = strcat(query, "',");
 	query = strcat(query, "'"); query = strcat(query, ratestr); query = strcat(query, "',");
-	query = strcat(query, "'buy',");
+	query = strcat(query, "'"); query = strcat(query, type); query = strcat(query,"',");
 	query = strcat(query, "'pending',");
-	query = strcat(query, "'"); query = strcat(query, btcpaidstr); query = strcat(query, "'");
+	query = strcat(query, "'"); query = strcat(query, btcstr); query = strcat(query, "'");
 	query = strcat(query, ");");
 
 	query_status = mysql_query(connector, query);
-	if (query_status != 0) {
-		fprintf(stderr, "something went wrong when trying to insert: %s\n", query);
-	}
+	if (query_status != 0)
+		fprintf(stderr, "MySQL query failed: '%s'", query);
 	free(query);
 	return query_status;
 }
 
-static int processed_order(MYSQL *connector, char *UUID, double gain) {
-	char *query;
+static int processed_sell_order(MYSQL *connector, char *UUID, double gain) {
+	char *query = NULL;
 	char gainstr[18];
 	int query_status;
 
 	sprintf(gainstr, "%.8f", gain);
-	query = malloc(strlen("UPDATE Orders SET BotState = 'processed', Gain = '' WHERE UUID='") +
-		       strlen(gainstr) + strlen(UUID) + 3); // "'"+";"+"\0"
+	if (!(query = malloc(1024)))
+		return -ENOMEM;
+
 	query[0] = '\0';
 	query = strcat(query, "UPDATE Orders SET BotState = 'processed',");
 	query = strcat(query, "Gain = '");
@@ -188,46 +188,97 @@ static int processed_order(MYSQL *connector, char *UUID, double gain) {
 	printf("%s\n", query);
 
 	query_status = mysql_query(connector, query);
-	if (query_status != 0) {
-		fprintf(stderr, "Something went wrong when trying to update: %s\n", query);
-	}
+	if (query_status != 0)
+		fprintf(stderr, "MySQL query failed: '%s'", query);
+	free(query);
+	return query_status;
+}
+
+static int processed_buy_order(MYSQL *connector, char *UUID) {
+	char *query = NULL;
+	int query_status;
+
+	if (!(query = malloc(1024)))
+		return -ENOMEM;
+
+	query[0] = '\0';
+	query = strcat(query, "UPDATE Orders SET BotState = 'processed' ");
+	query = strcat(query, "WHERE UUID='");
+	query = strcat(query, UUID);
+	query = strcat(query, "';");
+	printf("%s\n", query);
+
+	query_status = mysql_query(connector, query);
+	if (query_status != 0)
+		fprintf(stderr, "MySQL query failed: '%s'", query);
+	free(query);
+	return query_status;
+}
+
+
+static int cancel_order(MYSQL *connector, char *UUID) {
+	char *query = NULL;
+	int query_status;
+
+	if (!(query = malloc(1024)))
+		return -ENOMEM;
+
+	query[0] = '\0';
+	query = strcat(query, "UPDATE Orders SET BotState = 'cancelled' WHERE UUID='");
+	query = strcat(query, UUID);
+	query = strcat(query, "';");
+
+	query_status = mysql_query(connector, query);
+	if (query_status != 0)
+		fprintf(stderr, "MySQL query failed: '%s'", query);
+
 	free(query);
 	return query_status;
 }
 
 /*
  * For resuming the bot.
- * If an order is not marked as processed in database, returns it otherwise return NULL
  * 1 thread = 1 order max opened so number of row if any is 1
+ * there can't be two orders (buy & sell) in the same market
  */
-static struct trade *lasttransaction(MYSQL *connector, struct market *m) {
-	char *query, *buffer;
+static struct trade *unprocessed_order(MYSQL *connector, struct market *m, char *type) {
+	char *query, *buffer, *uuid;
 	int query_status;
 	double qty, rate, btcpaid;
 	MYSQL_RES *result;
 	unsigned long *len;
 	struct trade *t = NULL;
 
-	query = malloc(strlen("SELECT * FROM Orders WHERE BotState = 'pending' AND Market = '';") +
-		       strlen(m->marketname) + 1 );
+	query = malloc(strlen("SELECT * FROM Orders WHERE BotState = 'pending'")+
+		       strlen("AND Market = '' AND BotType = '';") +
+		       strlen(type) + strlen(m->marketname) + 1 );
 
 	query[0] = '\0';
 	query = strcat(query, "SELECT * FROM Orders WHERE BotState = 'pending' AND Market = '");
 	query = strcat(query, m->marketname);
+	query = strcat(query, "' AND BotType = '");
+	query = strcat(query, type);
 	query = strcat(query, "';");
 
 	query_status = mysql_query(connector, query);
-	if (query_status != 0)
+	if (query_status != 0) {
+		fprintf(stderr, "MySQL query failed: '%s'", query);
+		free(query);
 		return NULL;
+	}
 
 	result = mysql_store_result(connector);
 
 	if (result && mysql_num_rows(result) == 1) {
 		MYSQL_ROW row;
 
-		buffer = malloc(42 * sizeof(char));
+		buffer = malloc(42);
+		uuid = malloc(42);
 		row = mysql_fetch_row(result);
 		len = mysql_fetch_lengths(result);
+
+		uuid[0] = '\0';
+		strncat(uuid, row[1], len[1] +1);
 
 		buffer[0] = '\0';
 		strncat(buffer, row[3], len[3] + 1);
@@ -241,7 +292,10 @@ static struct trade *lasttransaction(MYSQL *connector, struct market *m) {
 		strncat(buffer, row[7], len[7] + 1);
 		sscanf(buffer, "%lf", &btcpaid);
 
-		t = new_trade(m, LIMIT, qty, rate, IMMEDIATE_OR_CANCEL, NONE, 0, BUY);
+		if (strcmp(type, "buy") == 0)
+			t = new_trade(m, LIMIT, qty, rate, IMMEDIATE_OR_CANCEL, NONE, 0, BUY, uuid);
+		if (strcmp(type, "sell") == 0)
+			t = new_trade(m, LIMIT, qty, rate, IMMEDIATE_OR_CANCEL, NONE, 0, SELL, uuid);
 
 		t->realqty = qty;
 		t->btcpaid = btcpaid;
@@ -289,25 +343,61 @@ void *runbot(void *b) {
 	struct tick **hour_ticks = NULL, **minute_ticks = NULL;
 	struct ticker *last = NULL, *tmptick = NULL;
 	char *buyuuid = NULL, *selluuid = NULL;
-	time_t begining;
+	time_t begining, buytime;
 	double btcqty = 0, qty = 0;
-	int i = 0;
 	int nbhourt = 0;
 	double previousloss = 0;
 	int market_rank = m->bot_rank;
 
-	// look for past unprocessed trades
-	pthread_mutex_lock(&(bbot->bi->bi_lock));
-	buy = lasttransaction(bbot->bi->connector, m);
-	pthread_mutex_unlock(&(bbot->bi->bi_lock));
-
-	// init tabs to 0
-	printf("Started bot for market: %s\n", m->marketname);
-
 	/*
-	 * Poll every minutes, warning: loop never ends.
+	 * bot resuming
 	 */
-	while (i < 15) {
+	pthread_mutex_lock(&(bbot->bi->bi_lock));
+	buy = unprocessed_order(bbot->bi->connector, m, "buy");
+	sell = unprocessed_order(bbot->bi->connector, m, "sell");
+	pthread_mutex_unlock(&(bbot->bi->bi_lock));
+	if (buy && sell) {
+		fprintf(stderr,
+			"Found buy and sell unprocessed for same market. Database corruption ?.");
+		return NULL;
+	}
+	if (buy) {
+		if ((order = getorder(bbot->bi, buy->uuid))) {
+			if (order->isopen) {
+				buyuuid = malloc(strlen(buy->uuid));
+				buyuuid = strcpy(buyuuid, buy->uuid);
+				buy->completed = 0;
+			} else {
+				free_user_order(order); order = NULL;
+				free_trade(buy); buy = NULL;
+			}
+		} else {
+			fprintf(stderr, "first getorder failed, can't resume");
+			return NULL;
+		}
+	}
+	if (sell) {
+		if ((sellorder = getorder(bbot->bi, sell->uuid))) {
+			if (sellorder->isopen) {
+				selluuid = malloc(strlen(sell->uuid));
+				selluuid = strcpy(selluuid, sell->uuid);
+				sell->completed = 0;
+			} else {
+				free_user_order(order); order = NULL;
+				free_trade(sell); sell = NULL;
+			}
+		} else {
+			fprintf(stderr, "first getorder failed, can't resume");
+			return NULL;
+		}
+	}
+
+	printf("Started bot for market: %s\n", m->marketname);
+	/*
+	 * Poll every minutes
+	 * Loop exit if market rank decreased after a successfull SELL order
+	 */
+	while (1) {
 		begining = time(NULL);
 
 		/*
@@ -316,6 +406,8 @@ void *runbot(void *b) {
 		 * - RSI > 70 and gain > 0
 		 * - RSI not > 70 but gain > 1%
 		 */
+		if (minute_ticks)
+			free_ticks(minute_ticks);
 		while (difftime(time(NULL), begining) < 60) {
 			minute_ticks = getticks_rsi_mma_interval_period(bbot->bi, m, "oneMin", 14);
 			if (tmptick) {
@@ -329,10 +421,10 @@ void *runbot(void *b) {
 					if ((estimatedgain > 0 && minute_ticks[m->lastnbticks-1]->rsi_ema >= 70) ||
 					    (estimatedgain >= buy->btcpaid / 100)) {
 						if (!sell) {
-							sell = new_trade(m, LIMIT, 1, tmptick->last, IMMEDIATE_OR_CANCEL, NONE, 0, SELL);
+							sell = new_trade(m, LIMIT, 1, tmptick->last, IMMEDIATE_OR_CANCEL, NONE, 0, SELL, NULL);
 							if (!(selluuid = selllimit(bbot->bi, m, buy->realqty, tmptick->last))) {
 								printf("Something went wront when passing SELL order, uuid null\n");
-								free(sell); sell = NULL;
+								free_trade(sell); sell = NULL;
 							} else {
 								printf("SELL %s at %.8f, quantity: %.8f, Gain (if sold): %.8f\n",
 								       m->marketname,
@@ -345,9 +437,10 @@ void *runbot(void *b) {
 									sellorder = getorder(bbot->bi, selluuid);
 								}
 								pthread_mutex_lock(&(bbot->bi->bi_lock));
-								processed_order(bbot->bi->connector, buyuuid, estimatedgain);
+								insert_order(bbot->bi->connector, selluuid, "sell", m->marketname, buy->realqty, tmptick->last, estimatedgain);
+								processed_buy_order(bbot->bi->connector, buyuuid);
 								pthread_mutex_unlock(&(bbot->bi->bi_lock));
-								free(buy); buy = NULL;
+								free_trade(buy); buy = NULL;
 							}
 						}
 					} else {
@@ -402,11 +495,31 @@ void *runbot(void *b) {
 		if (buy && !buy->completed) {
 			free_user_order(order);
 			order = getorder(bbot->bi, buyuuid);
-			if (order && !order->isopen) {
-				buy->fee = order->commission;
-				buy->realqty = order->quantity;
-				free_user_order(order);
-				buy->completed = 1;
+			if (order) {
+				if (!order->isopen) {
+					buy->fee = order->commission;
+					buy->realqty = order->quantity;
+					free_user_order(order);
+					buy->completed = 1;
+				} else if (difftime(time(NULL), buytime) >= 60) {
+					/*
+					 * one minute occured buy order not filled
+					 * we let it if RSI is falling otherwise we cancel it
+					 */
+
+					if (minute_ticks[m->lastnbticks-1]->rsi_ema > 30 &&
+					    minute_ticks[m->lastnbticks-1]->rsi_ema > minute_ticks[m->lastnbticks-2]->rsi_ema) {
+						printf("Order not filled after %.2f seconds, RSI raising, canceling.\n", difftime(time(NULL), buytime));
+						cancel(bbot->bi, buyuuid);
+						pthread_mutex_lock(&(bbot->bi->bi_lock));
+						cancel_order(bbot->bi->connector, buyuuid);
+						pthread_mutex_unlock(&(bbot->bi->bi_lock));
+						free_user_order(order);
+						free(buyuuid); buyuuid = NULL;
+						//free_trade(buy);
+						buy = NULL;
+					}
+				}
 			}
 		}
 
@@ -423,9 +536,10 @@ void *runbot(void *b) {
 				pthread_mutex_lock(&(bbot->bi->bi_lock));
 				bbot->bi->trades_active--;
 				pthread_mutex_unlock(&(bbot->bi->bi_lock));
+				processed_sell_order(bbot->bi->connector, selluuid, sellorder->price);
 				free_user_order(sellorder);
 				sellorder = NULL;
-				free(sell); sell = NULL;
+				free_trade(sell); sell = NULL;
 				free(selluuid); selluuid = NULL;
 				free(buyuuid); buyuuid = NULL;
 				if (rankofmarket(bbot->bi, m) < market_rank) {
@@ -443,7 +557,7 @@ void *runbot(void *b) {
 		 * rsi != 0 in case of init failure (need to confirm it is fixed)
 		 * but should be removed
 		 */
-		if (m->rsi < 30 && m->rsi != 0 && !buy && !sell && hour_ticks[nbhourt-1]->rsi_ema <= 60) {
+		if (m->rsi < 30 && m->rsi != 0 && !buy && !sell && hour_ticks[nbhourt-1]->rsi_ema <= 35) {
 			last = getticker(bbot->bi, m);
 			if (last) {
 				/* btc available divided by the number of active bot markets */
@@ -458,14 +572,15 @@ void *runbot(void *b) {
 				 * This instanciate a trade struct but it does not buy for real (API V2 not implemented)
 				 * but we can use trade struct fields
 				 */
-				buy = new_trade(m, LIMIT, qty, last->last, IMMEDIATE_OR_CANCEL, NONE, 0, BUY);
+				buy = new_trade(m, LIMIT, qty, last->last, IMMEDIATE_OR_CANCEL, NONE, 0, BUY, NULL);
 				buy->btcpaid = btcqty * 1.0025;
 				buy->realqty = qty;
 				if (!(buyuuid = buylimit(bbot->bi, m, qty, last->last))) {
 					printf("Something went wront when passing BUY order, uuid null\n");
-					free(buy);
+					free_trade(buy);
 					buy = NULL;
 				} else {
+					buytime = time(NULL);
 					pthread_mutex_lock(&(bbot->bi->bi_lock));
 					bbot->bi->trades_active++;
 					pthread_mutex_unlock(&(bbot->bi->bi_lock));
@@ -473,7 +588,7 @@ void *runbot(void *b) {
 					sleep(3);
 					order = getorder(bbot->bi, buyuuid);
 					pthread_mutex_lock(&(bbot->bi->bi_lock));
-					insert_order(bbot->bi->connector, buyuuid, m->marketname, buy->realqty, last->last, buy->btcpaid);
+					insert_order(bbot->bi->connector, buyuuid, "buy", m->marketname, buy->realqty, last->last, buy->btcpaid);
 					pthread_mutex_unlock(&(bbot->bi->bi_lock));
 					/* order already complete */
 					if (order && !order->isopen) {
@@ -495,10 +610,10 @@ void *runbot(void *b) {
 				double estimatedgain = sellminusfee - buy->btcpaid;
 				if ((estimatedgain > 0 && m->rsi >= 70) || (estimatedgain >= buy->btcpaid / 100)) {
 					if (!sell) {
-						sell = new_trade(m, LIMIT, 1, last->last, IMMEDIATE_OR_CANCEL, NONE, 0, SELL);
+						sell = new_trade(m, LIMIT, 1, last->last, IMMEDIATE_OR_CANCEL, NONE, 0, SELL, NULL);
 						if (!(selluuid = selllimit(bbot->bi, m, buy->realqty, last->last))) {
 							printf("Something went wront when passing SELL order, uuid null\n");
-							free(sell); sell = NULL;
+							free_trade(sell); sell = NULL;
 						} else {
 							printf("SELL %s at %.8f, quantity: %.8f, Gain (if sold): %.8f\n", m->marketname, last->last, buy->realqty, estimatedgain);
 							while (!sellorder) {
@@ -507,9 +622,9 @@ void *runbot(void *b) {
 								sellorder = getorder(bbot->bi, selluuid);
 							}
 							pthread_mutex_lock(&(bbot->bi->bi_lock));
-							processed_order(bbot->bi->connector, buyuuid, estimatedgain);
+							processed_buy_order(bbot->bi->connector, buyuuid);
 							pthread_mutex_unlock(&(bbot->bi->bi_lock));
-							free(buy); buy = NULL;
+							free_trade(buy); buy = NULL;
 						}
 					}
 				} else if (m->rsi >= 70) {
@@ -517,9 +632,6 @@ void *runbot(void *b) {
 				}
 			}
 		}
-		i++;
-		if (i == 14)
-			i = 0;
 	}
 	return NULL;
 }
