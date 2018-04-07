@@ -113,6 +113,7 @@ static int tickInterval_is_valid(char *s) {
 	    (strcmp(s, "thirtyMin") == 0) ||
 	    (strcmp(s, "Hour") == 0))
 		return 1;
+	printf("Interval invalid\n");
 	return 0;
 }
 
@@ -538,17 +539,14 @@ int main(int argc, char *argv[]) {
 		bi->currencies = getcurrencies(bi);
 		bot(bi);
 		break;
-	case 13: /* EMA */
+	case 13: /* EMA or RSI */
 		if (strcmp(call, "--getema") == 0) {
 			ma = ema_interval_period(bi, market, interval, period);
 			printf("%.8f\n", ma[period-1]);
 			free(ma);
 		}
-		if (strcmp(call, "--getrsi") == 0) {
+		if (strcmp(call, "--getrsi") == 0)
 			printf("%.4f\n", rsi_mma_interval_period(bi, market, interval, period));
-			//getticks_rsi_mma_interval_period(bi, market, interval, period);
-			//rsi_interval_period(bi, market, interval, period);
-		}
 		free(interval);
 		break;
 	default:

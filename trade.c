@@ -50,6 +50,8 @@ struct trade *new_trade(struct market *m,
 	if (uuid) {
 		trade->uuid = malloc(strlen(uuid) +1);
 		trade->uuid = strcpy(trade->uuid, uuid);
+	} else {
+		trade->uuid = NULL;
 	}
 
 	return trade;

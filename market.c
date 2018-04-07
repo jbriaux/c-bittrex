@@ -177,7 +177,7 @@ struct ticker *getticker(struct bittrex_info *bi, struct market *m) {
 	ticker->last = json_real_value(json_object_get(result, "Last"));
 
 	json_decref(root);
-	//printf("%.8f %.8f %.8f\n", ticker->bid, ticker->ask, ticker->last);
+	free(url);
 
 	return ticker;
 }
@@ -943,7 +943,7 @@ double *mma_interval_period(struct bittrex_info *bi, struct market *m, char *int
 
 	for (i = 1; i < period; i++) {
 		moving_average[i] = ticks[j]->close * weight + moving_average[i-1]*(1-weight);
-		printf("%.8f\n", moving_average[i]);
+		//printf("%.8f\n", moving_average[i]);
 		j++;
 	}
 

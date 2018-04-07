@@ -311,6 +311,7 @@ json_t *api_call(struct bittrex_info *bi, char *call, char *rootcall) {
 		tmp = json_object_get(root, "message");
 		if (tmp && json_string_value(tmp))
 			printf("API replied: %s\n", json_string_value(tmp));
+		json_decref(root);
 		return NULL;
 	}
 
@@ -377,6 +378,7 @@ json_t *api_call_sec(struct bittrex_info *bi, char *call, char *hmac, char *root
 		tmp = json_object_get(root, "message");
 		if (tmp && json_string_value(tmp))
 			printf("API replied: %s\n", json_string_value(tmp));
+		json_decref(root);
 		return NULL;
 	}
 

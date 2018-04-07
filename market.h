@@ -216,6 +216,8 @@ struct market *new_market();
 double rsi_interval_period(struct bittrex_info *bi, struct market *m, char *interval, int period);
 double rsi_mma_interval_period(struct bittrex_info *bi, struct market *m, char *interval, int period);
 
+double *mma_interval_period(struct bittrex_info *bi, struct market *m, char *interval, int period);
+
 
 /*
  * Exponential Moving Average (period)

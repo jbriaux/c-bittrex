@@ -137,29 +137,41 @@ int bot(struct bittrex_info *bi) {
  * btcpaid: BTC paid or
  *
  */
-static int insert_order(MYSQL *connector, char *UUID, char *type, char *mname, double qty, double rate, double btc) {
+static int insert_order(MYSQL *connector, char *UUID, char *type, char *mname,
+			double qty, double rate, double btcorgain) {
 	char *query = NULL;
 	char qtystr[32], ratestr[32], btcstr[32];
 	int query_status;
+	char *ib = "INSERT INTO Orders (UUID,Market,Quantity,Rate,BotType,BotState,Btc)";
+	char *is = "INSERT INTO Orders (UUID,Market,Quantity,Rate,BotType,BotState,Gain)";
 
 	sprintf(qtystr, "%.8f", qty);
 	sprintf(ratestr, "%.8f", rate);
-	sprintf(btcstr, "%.8f", btc);
+	sprintf(btcstr, "%.8f", btcorgain);
+
 
 	if (!(query = malloc(1024)))
 		return -ENOMEM;
-
 	query[0] = '\0';
-	query = strcat(query, "INSERT INTO Orders (UUID,Market,Quantity,Rate,BotType,BotState,Btc) ");
-	query = strcat(query, "VALUES (");
-	query = strcat(query, "'"); query = strcat(query, UUID); query = strcat(query, "',");;
-	query = strcat(query, "'"); query = strcat(query, mname); query = strcat(query, "',");
-	query = strcat(query, "'"); query = strcat(query, qtystr); query = strcat(query, "',");
-	query = strcat(query, "'"); query = strcat(query, ratestr); query = strcat(query, "',");
-	query = strcat(query, "'"); query = strcat(query, type); query = strcat(query,"',");
-	query = strcat(query, "'pending',");
-	query = strcat(query, "'"); query = strcat(query, btcstr); query = strcat(query, "'");
-	query = strcat(query, ");");
+
+	if (strcmp(type, "buy") == 0)
+		query = strcat(query, ib);
+	else
+		query = strcat(query, is);
+
+	query = strcat(query, " VALUES ('");
+	query = strcat(query, UUID);
+	query = strcat(query, "','");;
+	query = strcat(query, mname);
+	query = strcat(query, "','");
+	query = strcat(query, qtystr);
+	query = strcat(query, "','");
+	query = strcat(query, ratestr);
+	query = strcat(query, "','");
+	query = strcat(query, type);
+	query = strcat(query,"','pending','");
+	query = strcat(query, btcstr);
+	query = strcat(query, "');");
 
 	query_status = mysql_query(connector, query);
 	if (query_status != 0)
@@ -168,19 +180,20 @@ static int insert_order(MYSQL *connector, char *UUID, char *type, char *mname, d
 	return query_status;
 }
 
-static int processed_sell_order(MYSQL *connector, char *UUID, double gain) {
+static int processed_sell_order(MYSQL *connector, char *UUID, double btc) {
 	char *query = NULL;
-	char gainstr[18];
+	char btcstr[18];
 	int query_status;
 
-	sprintf(gainstr, "%.8f", gain);
+	sprintf(btcstr, "%.8f", btc);
+
 	if (!(query = malloc(1024)))
 		return -ENOMEM;
 
 	query[0] = '\0';
 	query = strcat(query, "UPDATE Orders SET BotState = 'processed',");
-	query = strcat(query, "Gain = '");
-	query = strcat(query, gainstr);
+	query = strcat(query, "Btc = '");
+	query = strcat(query, btcstr);
 	query = strcat(query, "'");
 	query = strcat(query, " WHERE UUID='");
 	query = strcat(query, UUID);
@@ -218,13 +231,14 @@ static int processed_buy_order(MYSQL *connector, char *UUID) {
 
 static int cancel_order(MYSQL *connector, char *UUID) {
 	char *query = NULL;
+	char *q = "UPDATE Orders SET BotState = 'cancelled' WHERE UUID='";
 	int query_status;
 
 	if (!(query = malloc(1024)))
 		return -ENOMEM;
 
 	query[0] = '\0';
-	query = strcat(query, "UPDATE Orders SET BotState = 'cancelled' WHERE UUID='");
+	query = strcat(query, q);
 	query = strcat(query, UUID);
 	query = strcat(query, "';");
 
@@ -241,7 +255,8 @@ static int cancel_order(MYSQL *connector, char *UUID) {
  * 1 thread = 1 order max opened so number of row if any is 1
  * there can't be two orders (buy & sell) in the same market
  */
-static struct trade *unprocessed_order(MYSQL *connector, struct market *m, char *type) {
+static struct trade *unprocessed_order(MYSQL *connector, struct market *m,
+				       char *type) {
 	char *query, *buffer, *uuid;
 	int query_status;
 	double qty, rate, btcpaid;
@@ -293,9 +308,11 @@ static struct trade *unprocessed_order(MYSQL *connector, struct market *m, char 
 		sscanf(buffer, "%lf", &btcpaid);
 
 		if (strcmp(type, "buy") == 0)
-			t = new_trade(m, LIMIT, qty, rate, IMMEDIATE_OR_CANCEL, NONE, 0, BUY, uuid);
+			t = new_trade(m, LIMIT, qty, rate, IMMEDIATE_OR_CANCEL,
+				      NONE, 0, BUY, uuid);
 		if (strcmp(type, "sell") == 0)
-			t = new_trade(m, LIMIT, qty, rate, IMMEDIATE_OR_CANCEL, NONE, 0, SELL, uuid);
+			t = new_trade(m, LIMIT, qty, rate, IMMEDIATE_OR_CANCEL,
+				      NONE, 0, SELL, uuid);
 
 		t->realqty = qty;
 		t->btcpaid = btcpaid;
@@ -309,31 +326,14 @@ static struct trade *unprocessed_order(MYSQL *connector, struct market *m, char 
 }
 
 
-// fixme add stop loss option
-// fixme add retry tick  if one tick is empty (API returned no value or timedout)
-// if too many ticks are lost the API may be down: decide what to do
-
 /*
  * Hardcoded RSI 14 strategy for specified market
  * One thread / market
  *
- * Buy when Wilder RSI is less than 30
+ * Buy when Wilder RSI14,minute < 30 and RSI 14,hour < 60
  * Sell when Wilder RSI is greater than 70 and margin > 0.25% (fees)
  * or sell whatever RSI is and if gain >= 1%
  *
- * Two RSI are computed:
- * - rsi based on
- *   inc: increase of value (tick(N) - tick(N-1))
- *   dec: decrease of value
- *   formula used: sum(inc, 14)/(sum(inc,14)+sum(dec,14))
- *
- * - rsi of Wilder based on arithmetic moving average:
- *   mmi: moving average of value increase
- *        mmi[i] = (inc[i-1] + mmi[i-1]*(14-1))/14
- *   mmd: moving average of value decrease
- *        mmd[i] = (dec[i-1] + mmd[i-1]*(14-1))/14
- *   formula used:  1-(1/(1+mmi[i]/mmd[i]))
- * EMA = exponential moving average
  */
 void *runbot(void *b) {
 	struct bittrex_bot *bbot = (struct bittrex_bot *)b;
@@ -398,240 +398,277 @@ void *runbot(void *b) {
 	 * Loop exit if market rank decreased after a successfull SELL order
 	 */
 	while (1) {
-		begining = time(NULL);
+	    begining = time(NULL);
 
-		/*
-		 * This loop polls ~5/s api for tick
-		 * We sell in these condition:
-		 * - RSI > 70 and gain > 0
-		 * - RSI not > 70 but gain > 1%
-		 */
-		if (minute_ticks)
-			free_ticks(minute_ticks);
-		while (difftime(time(NULL), begining) < 60) {
-			minute_ticks = getticks_rsi_mma_interval_period(bbot->bi, m, "oneMin", 14);
-			if (tmptick) {
-				free(tmptick);
-				tmptick = NULL;
-			}
-			if ((tmptick = getticker(bbot->bi, m))) {
-				if (buy && buy->completed) {
-					double sellminusfee = (tmptick->last * buy->realqty) * ( 1 - 0.25/100);
-					double estimatedgain = sellminusfee - buy->btcpaid;
-					if ((estimatedgain > 0 && minute_ticks[m->lastnbticks-1]->rsi_ema >= 70) ||
-					    (estimatedgain >= buy->btcpaid / 100)) {
-						if (!sell) {
-							sell = new_trade(m, LIMIT, 1, tmptick->last, IMMEDIATE_OR_CANCEL, NONE, 0, SELL, NULL);
-							if (!(selluuid = selllimit(bbot->bi, m, buy->realqty, tmptick->last))) {
-								printf("Something went wront when passing SELL order, uuid null\n");
-								free_trade(sell); sell = NULL;
-							} else {
-								printf("SELL %s at %.8f, quantity: %.8f, Gain (if sold): %.8f\n",
-								       m->marketname,
-								       tmptick->last,
-								       buy->realqty,
-								       estimatedgain);
-								while (!sellorder) {
-									fprintf(stderr, "getorder: '%s' failed, retrying.\n",
-										selluuid);
-									sellorder = getorder(bbot->bi, selluuid);
-								}
-								pthread_mutex_lock(&(bbot->bi->bi_lock));
-								insert_order(bbot->bi->connector, selluuid, "sell", m->marketname, buy->realqty, tmptick->last, estimatedgain);
-								processed_buy_order(bbot->bi->connector, buyuuid);
-								pthread_mutex_unlock(&(bbot->bi->bi_lock));
-								free_trade(buy); buy = NULL;
-							}
-						}
-					} else {
-						if (previousloss != estimatedgain && minute_ticks[m->lastnbticks-1]->rsi_ema >= 70) {
-							printf("Warning, RSI(tmp) of %s over 70 but no opportunity found (loss: %.8f)\n", m->marketname, estimatedgain);
-							previousloss = estimatedgain;
-						}
-					}
-				}
-			}
-			free_ticks(minute_ticks);
-			if (!buy)
-				sleep(5);
-			else
-				sleep(1);
-		}
-
-		if (hour_ticks)
-			free_ticks(hour_ticks);
+	    /*
+	     * This loop polls ~5/s api for tick
+	     * We sell in these condition:
+	     * - RSI > 70 and gain > 0
+	     * - RSI not > 70 but gain > 1%
+	     */
+	    if (minute_ticks)
+		free_ticks(minute_ticks);
+	    while (difftime(time(NULL), begining) < 60) {
+		minute_ticks = getticks_rsi_mma_interval_period(bbot->bi,
+								m,
+								"oneMin",
+								14);
 		if (tmptick) {
-			free(tmptick);
-			tmptick = NULL;
+		    free(tmptick);
+		    tmptick = NULL;
 		}
-
-		hour_ticks = getticks_rsi_mma_interval_period(bbot->bi, m, "Hour", 14);
-		nbhourt = m->lastnbticks;
-		minute_ticks = getticks_rsi_mma_interval_period(bbot->bi, m, "oneMin", 14);
-
-		/*
-		 * lock on the market as indicators will be shown (later) in a different thread.
-		 */
-		pthread_mutex_lock(&(m->indicators_lock));
-		m->rsi = minute_ticks[m->lastnbticks-1]->rsi_ema;
-		pthread_mutex_unlock(&(m->indicators_lock));
-
-		while (!tmptick) {
-			tmptick = getticker(bbot->bi, m);
-
+		tmptick = getticker(bbot->bi, m);
+		if (tmptick && buy && buy->completed) {
+		    double sellminusfee = (tmptick->last * buy->realqty)*(1 - 0.25/100);
+		    double estimatedgain = sellminusfee - buy->btcpaid;
+		    if ((estimatedgain > 0 && minute_ticks[m->lastnbticks-1]->rsi_ema >= 70) ||
+			(estimatedgain >= buy->btcpaid / 100)) {
+			if (!sell) {
+			    sell = new_trade(m, LIMIT, 1, tmptick->last, IMMEDIATE_OR_CANCEL,
+					     NONE, 0, SELL, NULL);
+			    if (!(selluuid = selllimit(bbot->bi, m, buy->realqty, tmptick->last))) {
+				printf("sellorder failed, uuid null\n");
+				free_trade(sell);
+				sell = NULL;
+			    } else {
+				printf("SELL %s at %.8f, quantity: %.8f, Gain (if sold): %.8f\n",
+				       m->marketname,
+				       tmptick->last,
+				       buy->realqty,
+				       estimatedgain);
+				while (!sellorder) {
+				    fprintf(stderr,
+					    "getorder: '%s' failed, retrying.\n",
+					    selluuid);
+				    sellorder = getorder(bbot->bi, selluuid);
+				}
+				pthread_mutex_lock(&(bbot->bi->bi_lock));
+				insert_order(bbot->bi->connector, selluuid,
+					     "sell", m->marketname,
+					     buy->realqty, tmptick->last,
+					     estimatedgain);
+				processed_buy_order(bbot->bi->connector, buyuuid);
+				pthread_mutex_unlock(&(bbot->bi->bi_lock));
+				free_trade(buy); buy = NULL;
+			    }
+			}
+		    } else {
+			if (previousloss != estimatedgain &&
+			    minute_ticks[m->lastnbticks-1]->rsi_ema >= 70) {
+			    printf("Warning, RSI(tmp) of %s over 70 but no opportunity found (loss: %.8f)\n",
+				   m->marketname,
+				   estimatedgain);
+			    previousloss = estimatedgain;
+			}
+		    }
 		}
+		free_ticks(minute_ticks);
+		if (!buy)
+		    sleep(5);
+		else
+		    sleep(1);
+	    }
 
-		fprintf(stderr,
-			"Market: %s\tRSI(14,mn): %.8f\tRSI(14,h): %.8f\tlast: %.8f\n",
-			m->marketname,
-			m->rsi,
-			hour_ticks[nbhourt-1]->rsi_ema,
-			tmptick->last);
-
+	    if (hour_ticks)
+		free_ticks(hour_ticks);
+	    if (tmptick) {
 		free(tmptick);
 		tmptick = NULL;
+	    }
 
-		/* refresh buy order state */
-		if (buy && !buy->completed) {
+	    hour_ticks = getticks_rsi_mma_interval_period(bbot->bi, m,
+							  "Hour", 14);
+	    nbhourt = m->lastnbticks;
+	    minute_ticks = getticks_rsi_mma_interval_period(bbot->bi, m,
+							    "oneMin", 14);
+
+	    /*
+	     * lock on the market as indicators will be shown (later)
+	     * in a different thread.
+	     */
+	    pthread_mutex_lock(&(m->indicators_lock));
+	    m->rsi = minute_ticks[m->lastnbticks-1]->rsi_ema;
+	    pthread_mutex_unlock(&(m->indicators_lock));
+
+	    while (!tmptick)
+		tmptick = getticker(bbot->bi, m);
+
+	    fprintf(stderr,
+		    "Market: %s\tRSI(14,mn): %.8f\tRSI(14,h): %.8f\tlast: %.8f\n",
+		    m->marketname,
+		    m->rsi,
+		    hour_ticks[nbhourt-1]->rsi_ema,
+		    tmptick->last);
+
+	    free(tmptick);
+	    tmptick = NULL;
+
+	    /* refresh buy order state */
+	    if (buy && !buy->completed) {
+		free_user_order(order);
+		order = getorder(bbot->bi, buyuuid);
+		if (order) {
+		    if (!order->isopen) {
+			buy->fee = order->commission;
+			buy->realqty = order->quantity;
 			free_user_order(order);
+			buy->completed = 1;
+		    } else if (difftime(time(NULL), buytime) >= 60) {
+			/*
+			 * one minute occured buy order not filled
+			 * we let it if RSI is falling otherwise we cancel it
+			 */
+
+			if (minute_ticks[m->lastnbticks-1]->rsi_ema > 35 &&
+			    minute_ticks[m->lastnbticks-1]->rsi_ema > (minute_ticks[m->lastnbticks-2]->rsi_ema + 5)) {
+			    printf("Order not filled after %.2f seconds, RSI raising, canceling.\n",
+				   difftime(time(NULL), buytime));
+			    cancel(bbot->bi, buyuuid);
+			    pthread_mutex_lock(&(bbot->bi->bi_lock));
+			    cancel_order(bbot->bi->connector, buyuuid);
+			    pthread_mutex_unlock(&(bbot->bi->bi_lock));
+			    free_user_order(order);
+			    free(buyuuid);
+			    buyuuid = NULL;
+			    free_trade(buy);
+			    buy = NULL;
+			}
+		    }
+		}
+	    }
+
+	    /*
+	     * refresh sell order state
+	     * we free buyuuid and sell + selluuid when sell order completes.
+	     * Check if the state of the market changed (in volume)
+	     * in case of change, exit and open a new thread on another market.
+	     */
+	    if (sell && !sell->completed) {
+		free_user_order(sellorder);
+		sellorder = getorder(bbot->bi, selluuid);
+		if (sellorder && !sellorder->isopen) {
+		    pthread_mutex_lock(&(bbot->bi->bi_lock));
+		    bbot->bi->trades_active--;
+		    pthread_mutex_unlock(&(bbot->bi->bi_lock));
+		    processed_sell_order(bbot->bi->connector, selluuid, sellorder->price);
+		    free_user_order(sellorder);
+		    sellorder = NULL;
+		    free_trade(sell);
+		    sell = NULL;
+		    free(selluuid);
+		    selluuid = NULL;
+		    free(buyuuid);
+		    buyuuid = NULL;
+		    if (rankofmarket(bbot->bi, m) < market_rank) {
+			printf("Market(%s) lost rank, exiting\n", m->marketname);
+			return NULL;
+		    } else {
+			printf("Market(%s) rank increased! Good, continuing.\n",
+			       m->marketname);
+		    }
+		}
+	    }
+
+	    /*
+	     * If rsi < 30 and we did not buy yet, we buy
+	     *
+	     * rsi != 0 in case of init failure (need to confirm it is fixed)
+	     * but should be removed
+	     */
+	    if (m->rsi < 30 && m->rsi != 0 && !buy && !sell &&
+		hour_ticks[nbhourt-1]->rsi_ema <= 60) {
+		last = getticker(bbot->bi, m);
+		if (last) {
+		    /* btc available divided by the number of active bot markets */
+		    btcqty = quantity(bbot) / (bbot->active_markets - bbot->bi->trades_active);
+		    /* we use 99% of qty available */
+		    btcqty *= 0.99;
+		    /* qty of coin to be baught */
+		    qty = btcqty / last->last;
+		    /* order information */
+		    printf("BUY %s at %.8f, quantity: %.8f (BTC: %.8f), fees: %.8f\n",
+			   m->marketname,
+			   last->last,
+			   qty, btcqty,
+			   (0.25/100) * qty * last->last);
+		    /*
+		     * This instanciate a trade struct but it does not buy for real (API V2 not implemented)
+		     * but we can use trade struct fields
+		     */
+		    buy = new_trade(m, LIMIT, qty, last->last, IMMEDIATE_OR_CANCEL,
+				    NONE, 0, BUY, NULL);
+		    buy->btcpaid = btcqty * 1.0025;
+		    buy->realqty = qty;
+		    if (!(buyuuid = buylimit(bbot->bi, m, qty, last->last))) {
+			printf("buyorder failed, uuid null\n");
+			free_trade(buy);
+			buy = NULL;
+		    } else {
+			buytime = time(NULL);
+			pthread_mutex_lock(&(bbot->bi->bi_lock));
+			bbot->bi->trades_active++;
+			pthread_mutex_unlock(&(bbot->bi->bi_lock));
+			/* we let some time to bittrex */
+			sleep(3);
 			order = getorder(bbot->bi, buyuuid);
-			if (order) {
-				if (!order->isopen) {
-					buy->fee = order->commission;
-					buy->realqty = order->quantity;
-					free_user_order(order);
-					buy->completed = 1;
-				} else if (difftime(time(NULL), buytime) >= 60) {
-					/*
-					 * one minute occured buy order not filled
-					 * we let it if RSI is falling otherwise we cancel it
-					 */
-
-					if (minute_ticks[m->lastnbticks-1]->rsi_ema > 30 &&
-					    minute_ticks[m->lastnbticks-1]->rsi_ema > minute_ticks[m->lastnbticks-2]->rsi_ema) {
-						printf("Order not filled after %.2f seconds, RSI raising, canceling.\n", difftime(time(NULL), buytime));
-						cancel(bbot->bi, buyuuid);
-						pthread_mutex_lock(&(bbot->bi->bi_lock));
-						cancel_order(bbot->bi->connector, buyuuid);
-						pthread_mutex_unlock(&(bbot->bi->bi_lock));
-						free_user_order(order);
-						free(buyuuid); buyuuid = NULL;
-						//free_trade(buy);
-						buy = NULL;
-					}
-				}
+			pthread_mutex_lock(&(bbot->bi->bi_lock));
+			insert_order(bbot->bi->connector, buyuuid, "buy",
+				     m->marketname, buy->realqty, last->last,
+				     buy->btcpaid);
+			pthread_mutex_unlock(&(bbot->bi->bi_lock));
+			/* order already complete */
+			if (order && !order->isopen) {
+			    buy->fee = order->commission;
+			    buy->realqty = order->quantity;
+			    free_user_order(order);
+			    buy->completed = 1;
 			}
+		    }
+		    free(last);
+		    last = NULL;
 		}
-
-		/*
-		 * refresh sell order state
-		 * we free buyuuid and sell + selluuid when sell order completes.
-		 * Check if the state of the market changed (in volume)
-		 * in case of change, exit and open a new thread on another market.
-		 */
-		if (sell && !sell->completed) {
-			free_user_order(sellorder);
-			sellorder = getorder(bbot->bi, selluuid);
-			if (sellorder && !sellorder->isopen) {
+	    }
+	    /*
+	     * This sell is unlikely (we sell mostly in first loop when RSI is refreshed ~1/s)
+	     */
+	    if (buy && buy->completed) {
+		if ((last = getticker(bbot->bi, m))) {
+		    double sellminusfee = (last->last * buy->realqty) * ( 1 - 0.25/100);
+		    double estimatedgain = sellminusfee - buy->btcpaid;
+		    if ((estimatedgain > 0 && m->rsi >= 70) ||
+			(estimatedgain >= buy->btcpaid / 100)) {
+			if (!sell) {
+			    sell = new_trade(m, LIMIT, 1, last->last,
+					     IMMEDIATE_OR_CANCEL, NONE,
+					     0, SELL, NULL);
+			    if (!(selluuid = selllimit(bbot->bi, m, buy->realqty, last->last))) {
+				printf("sellorder failed, uuid null\n");
+				free_trade(sell);
+				sell = NULL;
+			    } else {
+				printf("SELL %s at %.8f, quantity: %.8f, Gain (if sold): %.8f\n",
+				       m->marketname,
+				       last->last,
+				       buy->realqty,
+				       estimatedgain);
+				while (!sellorder) {
+				    fprintf(stderr, "getorder: '%s' failed, retrying.\n",
+					    selluuid);
+				    sellorder = getorder(bbot->bi, selluuid);
+				}
 				pthread_mutex_lock(&(bbot->bi->bi_lock));
-				bbot->bi->trades_active--;
+				processed_buy_order(bbot->bi->connector, buyuuid);
 				pthread_mutex_unlock(&(bbot->bi->bi_lock));
-				processed_sell_order(bbot->bi->connector, selluuid, sellorder->price);
-				free_user_order(sellorder);
-				sellorder = NULL;
-				free_trade(sell); sell = NULL;
-				free(selluuid); selluuid = NULL;
-				free(buyuuid); buyuuid = NULL;
-				if (rankofmarket(bbot->bi, m) < market_rank) {
-					printf("Market(%s) lost rank, exiting\n", m->marketname);
-					return NULL;
-				} else {
-					printf("Market(%s) rank increased! Good, continuing.\n", m->marketname);
-				}
+				free_trade(buy); buy = NULL;
+			    }
 			}
+		    } else if (m->rsi >= 70) {
+			printf("Warning, RSI of %s over 70 but no opportunity found (loss: %.8f)\n",
+			       m->marketname,
+			       estimatedgain);
+		    }
 		}
-
-		/*
-		 * If rsi < 30 and we did not buy yet, we buy
-		 *
-		 * rsi != 0 in case of init failure (need to confirm it is fixed)
-		 * but should be removed
-		 */
-		if (m->rsi < 30 && m->rsi != 0 && !buy && !sell && hour_ticks[nbhourt-1]->rsi_ema <= 35) {
-			last = getticker(bbot->bi, m);
-			if (last) {
-				/* btc available divided by the number of active bot markets */
-				btcqty = quantity(bbot) / (bbot->active_markets - bbot->bi->trades_active);
-				/* we use 99% of qty available */
-				btcqty *= 0.99;
-				/* qty of coin to be baught */
-				qty = btcqty / last->last;
-				/* order information */
-				printf("BUY %s at %.8f, quantity: %.8f (BTC: %.8f), fees: %.8f\n", m->marketname, last->last, qty, btcqty, (0.25/100) * qty * last->last);
-				/*
-				 * This instanciate a trade struct but it does not buy for real (API V2 not implemented)
-				 * but we can use trade struct fields
-				 */
-				buy = new_trade(m, LIMIT, qty, last->last, IMMEDIATE_OR_CANCEL, NONE, 0, BUY, NULL);
-				buy->btcpaid = btcqty * 1.0025;
-				buy->realqty = qty;
-				if (!(buyuuid = buylimit(bbot->bi, m, qty, last->last))) {
-					printf("Something went wront when passing BUY order, uuid null\n");
-					free_trade(buy);
-					buy = NULL;
-				} else {
-					buytime = time(NULL);
-					pthread_mutex_lock(&(bbot->bi->bi_lock));
-					bbot->bi->trades_active++;
-					pthread_mutex_unlock(&(bbot->bi->bi_lock));
-					/* we let some time to bittrex */
-					sleep(3);
-					order = getorder(bbot->bi, buyuuid);
-					pthread_mutex_lock(&(bbot->bi->bi_lock));
-					insert_order(bbot->bi->connector, buyuuid, "buy", m->marketname, buy->realqty, last->last, buy->btcpaid);
-					pthread_mutex_unlock(&(bbot->bi->bi_lock));
-					/* order already complete */
-					if (order && !order->isopen) {
-						buy->fee = order->commission;
-						buy->realqty = order->quantity;
-						free_user_order(order);
-						buy->completed = 1;
-					}
-				}
-				free(last); last = NULL;
-			}
-		}
-		/*
-		 * This sell is unlikely (we sell mostly in first loop when RSI is refreshed ~1/s)
-		 */
-		if (buy && buy->completed) {
-			if ((last = getticker(bbot->bi, m))) {
-				double sellminusfee = (last->last * buy->realqty) * ( 1 - 0.25/100);
-				double estimatedgain = sellminusfee - buy->btcpaid;
-				if ((estimatedgain > 0 && m->rsi >= 70) || (estimatedgain >= buy->btcpaid / 100)) {
-					if (!sell) {
-						sell = new_trade(m, LIMIT, 1, last->last, IMMEDIATE_OR_CANCEL, NONE, 0, SELL, NULL);
-						if (!(selluuid = selllimit(bbot->bi, m, buy->realqty, last->last))) {
-							printf("Something went wront when passing SELL order, uuid null\n");
-							free_trade(sell); sell = NULL;
-						} else {
-							printf("SELL %s at %.8f, quantity: %.8f, Gain (if sold): %.8f\n", m->marketname, last->last, buy->realqty, estimatedgain);
-							while (!sellorder) {
-								fprintf(stderr, "getorder: '%s' failed, retrying.\n",
-									selluuid);
-								sellorder = getorder(bbot->bi, selluuid);
-							}
-							pthread_mutex_lock(&(bbot->bi->bi_lock));
-							processed_buy_order(bbot->bi->connector, buyuuid);
-							pthread_mutex_unlock(&(bbot->bi->bi_lock));
-							free_trade(buy); buy = NULL;
-						}
-					}
-				} else if (m->rsi >= 70) {
-					printf("Warning, RSI of %s over 70 but no opportunity found (loss: %.8f)\n", m->marketname, estimatedgain);
-				}
-			}
-		}
+	    }
 	}
 	return NULL;
 }
