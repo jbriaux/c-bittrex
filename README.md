@@ -82,6 +82,8 @@ Public API calls:
  ./bittrex --market=marketname --getticker||--getmarketsummary||--getmarkethistory
  ./bittrex --market=marketname --getorderbook both|buy|sell
  ./bittrex --market=marketname --getticks oneMin|fiveMin|thirtyMin|Hour
+ ./bittrex --market=marketname --getema oneMin|fiveMin|thirtyMin|Hour,period
+ ./bittrex --market=marketname --getrsi oneMin|fiveMin|thirtyMin|Hour,period
 Market API Calls:
  ./bittrex --apikeyfile=path --market=marketname --buylimit|--selllimit|--tradebuy|--tradesell quantity,rate
  ./bittrex --apikeyfile=path --market=marketname --cancel orderuuid
