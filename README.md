@@ -4,7 +4,7 @@ Bittrex C API command line - **use at your own risk**.
 
 This is a command line to use bittrex API.
 
-It also contains an example of a bot for minute trading based on RSI 14.
+It also contains an example of a bot for trading based on RSI 14 (in minute and hour).
 
 The API is functional, the bot mode is still experimental **use at your own risk**.
 Moreover, during my tests I discovered that bittrex API replies with delayed candles (getticks), between 1 and 5mn delay. So, again, **use at your own risk**
@@ -194,6 +194,10 @@ GETTICKS (implemented and used by bot)
 TRADEBUY (not implemented yet)
 TRADESELL (not implemented yet)
 ```
+
+Bot
+-------------
+Please refer on this wiki page (https://github.com/jbriaux/c-bittrex/wiki/Bot-documentation)
 
 Libraries
 -------------
