@@ -363,14 +363,17 @@ void *runbot(void *b) {
 	}
 	if (buy) {
 		if ((order = getorder(bbot->bi, buy->uuid))) {
+			buyuuid = malloc(strlen(buy->uuid));
+			buyuuid = strcpy(buyuuid, buy->uuid);
 			if (order->isopen) {
-				buyuuid = malloc(strlen(buy->uuid));
-				buyuuid = strcpy(buyuuid, buy->uuid);
 				buy->completed = 0;
 			} else {
-				free_user_order(order); order = NULL;
-				free_trade(buy); buy = NULL;
+				free_user_order(order);
+				order = NULL;
 			}
+			printf("Found buy order to be resumed:");
+			printf("market: %s, uuid: %s\n", m->marketname, buyuuid);
+
 		} else {
 			fprintf(stderr, "first getorder failed, can't resume");
 			return NULL;
@@ -378,20 +381,21 @@ void *runbot(void *b) {
 	}
 	if (sell) {
 		if ((sellorder = getorder(bbot->bi, sell->uuid))) {
+			selluuid = malloc(strlen(sell->uuid));
+			selluuid = strcpy(selluuid, sell->uuid);
 			if (sellorder->isopen) {
-				selluuid = malloc(strlen(sell->uuid));
-				selluuid = strcpy(selluuid, sell->uuid);
 				sell->completed = 0;
 			} else {
-				free_user_order(order); order = NULL;
-				free_trade(sell); sell = NULL;
+				free_user_order(order);
+				order = NULL;
 			}
+			printf("Found sell order to be resumed:");
+			printf("market: %s, uuid: %s\n", m->marketname, buyuuid);
 		} else {
 			fprintf(stderr, "first getorder failed, can't resume");
 			return NULL;
 		}
 	}
-
 	printf("Started bot for market: %s\n", m->marketname);
 	/*
 	 * Poll every minutes
@@ -557,7 +561,8 @@ void *runbot(void *b) {
 		    sell = NULL;
 		    free(selluuid);
 		    selluuid = NULL;
-		    free(buyuuid);
+		    if (buyuuid)
+			    free(buyuuid);
 		    buyuuid = NULL;
 		    if (rankofmarket(bbot->bi, m) < market_rank) {
 			printf("Market(%s) lost rank, exiting\n", m->marketname);
