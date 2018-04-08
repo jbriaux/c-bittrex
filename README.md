@@ -18,7 +18,7 @@ Todo
 What's left to do:
 - add a makefile and automatic tests (tests added)
 - add a new call : --volumeonrange start_date end_date (buy and sell detailed volumes)
-
+- now that the bot can be exited from input, valgrind the bot.
 
 Fixed or added recently:
 -------------
