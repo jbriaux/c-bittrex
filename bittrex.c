@@ -69,6 +69,7 @@ struct bittrex_info *bittrex_info() {
 	strcpy(bi->lastcall, "none");
 
 	bi->trades_active = 0;
+	bi->terminate = 0;
 	pthread_mutex_init(&(bi->bi_lock), NULL);
 
 	// this call is not thread safe, must be called only once

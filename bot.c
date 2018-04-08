@@ -65,36 +65,36 @@ int rankofmarket(struct bittrex_info *bi, struct market *m) {
 	return -1;
 }
 
+void *inputstop(void *a) {
+	struct bittrex_bot *bbot = (struct bittrex_bot *)a;
+	char buffer[128];
+
+	buffer[0] = '\0';
+	while (strncmp(buffer, "STOP", 4) != 0) {
+		fgets(buffer, sizeof(buffer), stdin);
+	}
+	pthread_mutex_lock(&(bbot->bi->bi_lock));
+	bbot->bi->terminate = 1;
+	pthread_mutex_unlock(&(bbot->bi->bi_lock));
+
+	return NULL;
+}
+
 int bot(struct bittrex_info *bi) {
 	struct bittrex_bot **bbot;
 	struct market **worthm;
-	/* struct tick **ticks; */
-	pthread_t ind[MAX_ACTIVE_MARKETS]; /* abort; */
-	int i, j = 0, nbm = 0;
-	/* double diffh, diffd; */
-	/* char c1, c2; */
+	pthread_t ind[MAX_ACTIVE_MARKETS];
+	pthread_t stop[1];
+	int i, nbm = 0;
 
 	worthm = malloc((MAX_ACTIVE_MARKETS+1) * sizeof(struct market*));
-	printf("checking market performance of last day and hour (markets selection), using BTCs markets only\n");
-	for (i=0; i < bi->nbmarkets && j < MAX_ACTIVE_MARKETS; i++) {
+	printf("Selecting %d markets, top volume / 24h . BTC only\n",
+	       MAX_ACTIVE_MARKETS);
+	for (i=0; i < bi->nbmarkets && nbm < MAX_ACTIVE_MARKETS; i++) {
 		if (strncmp("BTC-", bi->markets[i]->marketname, 4) == 0) {
-			/* ticks = getticks(bi->markets[i], "Hour", 24); */
-			/* if (!ticks) */
-			/* 	ticks = getticks(bi->markets[i], "Hour", 24); */
-			/* diffh = (ticks[0]->close/ticks[1]->close - 1)*100; */
-			/* c1 = diffh >= 0 ? '+' : '\0'; */
-			/* diffd = (ticks[0]->close/ticks[23]->close - 1)*100; */
-			/* c2 = diffd >= 0 ? '+' : '\0'; */
-			/* printf("Market: %s, last hour: %c%.2f%%, last day: %c%.2f%%\n", bi->markets[i]->marketname, c1, diffh, c2,   diffd); */
-			/* if (diffh > 0 && diffd > 0 && nbm < MAX_ACTIVE_MARKETS) { */
-			/* 	worthm[nbm] = bi->markets[i]; */
-			/* 	nbm++; */
-			/* } */
-			/* free(ticks); */
 			worthm[nbm] = bi->markets[i];
 			worthm[nbm]->bot_rank = nbm;
 			nbm++;
-			j++;
 		}
 	}
 
@@ -104,7 +104,7 @@ int bot(struct bittrex_info *bi) {
 		nbm = 1;
 	}
 
-	bbot = malloc(nbm * sizeof(struct bittrex_bot*));
+	bbot = malloc((nbm + 1)* sizeof(struct bittrex_bot*));
 
 	printf("Selected Markets: ");
 	for (i=0; i < MAX_ACTIVE_MARKETS && worthm[i]; i++) {
@@ -116,14 +116,23 @@ int bot(struct bittrex_info *bi) {
 	}
 	printf("\n");
 
+	/* last bbot is not for trading, used only to terminate */
+	bbot[i] = malloc(sizeof(struct bittrex_bot));
+	bbot[i]->bi = bi;
+	bbot[i]->active_markets = nbm;
+
 	printf("BTC available for bot: %.8f\n", quantity(bbot[0]));
 	for (i=0; i < nbm; i++) {
 		pthread_create(&(ind[i]), NULL, runbot, bbot[i]);
 	}
+	pthread_create(&(stop[0]), NULL, inputstop, bbot[i]);
+	pthread_join(stop[0], NULL);
 
+	printf("Threads are stopping within next 60s...\n");
 	for (i=0; i < nbm; i++) {
-		pthread_join(ind[i], NULL);
+		pthread_join(ind[i], 0);
 	}
+	printf("Terminated\n");
 	return 0;
 }
 
@@ -358,7 +367,7 @@ void *runbot(void *b) {
 	pthread_mutex_unlock(&(bbot->bi->bi_lock));
 	if (buy && sell) {
 		fprintf(stderr,
-			"Found buy and sell unprocessed for same market. Database corruption ?.");
+				"Found buy and sell unprocessed for same market. Database corruption ?.");
 		return NULL;
 	}
 	if (buy) {
@@ -403,6 +412,24 @@ void *runbot(void *b) {
 	 */
 	while (1) {
 	    begining = time(NULL);
+
+	    /*
+	     * STOP has been asked by user
+	     */
+	    pthread_mutex_lock(&(bbot->bi->bi_lock));
+	    if (bbot->bi->terminate) {
+		if (buy && buy->completed && buyuuid) {
+		    selluuid =  selllimit(bbot->bi, m, buy->realqty,
+					  (buy->btcpaid / buy->realqty)*(1+1/100));
+		    insert_order(bbot->bi->connector, selluuid,
+				 "sell", m->marketname,
+				 buy->realqty, buy->btcpaid / buy->realqty,
+				 (buy->btcpaid / buy->realqty)*(1/100));
+		}
+		pthread_mutex_unlock(&(bbot->bi->bi_lock));
+		return NULL;
+	    }
+	    pthread_mutex_unlock(&(bbot->bi->bi_lock));
 
 	    /*
 	     * This loop polls ~5/s api for tick
@@ -562,7 +589,7 @@ void *runbot(void *b) {
 		    free(selluuid);
 		    selluuid = NULL;
 		    if (buyuuid)
-			    free(buyuuid);
+			free(buyuuid);
 		    buyuuid = NULL;
 		    if (rankofmarket(bbot->bi, m) < market_rank) {
 			printf("Market(%s) lost rank, exiting\n", m->marketname);

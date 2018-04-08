@@ -111,6 +111,8 @@ struct bittrex_info {
 	char *lastcall;
 	/* keep track of active threads */
 	int trades_active;
+	/* used to stop all thread */
+	int terminate;
 };
 
 struct bittrex_info *bittrex_info();
