@@ -16,7 +16,6 @@ So if a long term opportunity shows up you can get an email without checking all
 Todo
 -------------
 What's left to do:
-- add a thread scanning input for bot mode in order to be able to stop it properly (so far in bot mode, you need to kill with Ctrl+C)
 - add a makefile and automatic tests (tests added)
 - add a new call : --volumeonrange start_date end_date (buy and sell detailed volumes)
 
@@ -28,7 +27,8 @@ Fixed or added recently:
 - limit API call to 1/s per type of call : **done** (mostly usefull for the bot)
 - Protect MySQL connector and bittrex_info fields modified by bot threads with a lock: **done**
 - Valgrind on most calls (not the bot) **done**
-- added --getrsi and --getema in the CLI
+- added --getrsi and --getema in the CLI **done**
+- add a thread scanning input for bot mode in order to be able to stop it properly (so far in bot mode, you need to kill with Ctrl+C) **done**
 
 Installation
 -------------
