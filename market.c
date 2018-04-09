@@ -194,7 +194,7 @@ struct tick **getticks(struct bittrex_info *bi,
 		       int sort) {
 	json_t *root, *result, *raw;
 	char *url;
-	int size,i;
+	int size, i, offset = 0;
 	struct tick **ticks, *tick;
 
 	if (!m || !m->marketname || (sort != ASCENDING && sort != DESCENDING)) {
@@ -223,14 +223,18 @@ struct tick **getticks(struct bittrex_info *bi,
 
 	if (nbtick == 0)
 		nbtick = size;
-
+	else {
+		m->lastnbticks = nbtick;
+		offset = size - nbtick;
+	}
 	ticks = malloc((nbtick+1) * sizeof(struct tick*));
+
 
 	for (i=0; i < size && i < nbtick; i++) {
 		if (sort == ASCENDING)
 			raw = json_array_get(result, size-i-1);
 		if (sort == DESCENDING)
-			raw = json_array_get(result, i);
+			raw = json_array_get(result, i+offset);
 		tick = malloc(sizeof(struct tick));
 		tick->open = json_real_value(json_object_get(raw, "C"));
 		tick->high = json_real_value(json_object_get(raw, "H"));
@@ -900,15 +904,16 @@ double *ema_interval_period(struct bittrex_info *bi, struct market *m, char *int
 	/*
 	 * init EMA(0)
 	 */
-	for (i = 0; i < period; i++) {
+	for (i = 1; i <= period ; i++) {
 		moving_average[0] += ticks[i]->close;
 		j++;
 	}
+	j++;
 	moving_average[0] /= period;
 
 	for (i = 1; i < period; i++) {
 		moving_average[i] = ticks[j]->close * weight + moving_average[i-1]*(1-weight);
-		printf("%.8f\n", moving_average[i]);
+		//printf("tick %d: %.8f(%s), i %d %.8f\n", j, ticks[j]->close, ticks[j]->timestamp, i, moving_average[i]);
 		j++;
 	}
 
@@ -933,13 +938,14 @@ double *mma_interval_period(struct bittrex_info *bi, struct market *m, char *int
 		ticks = getticks(bi, m, interval, period*2, DESCENDING);
 
 	/*
-	 * init EMA(0)
+	 * init MMA(0)
 	 */
-	for (i = 0; i < period; i++) {
+	for (i = 1; i <= period; i++) {
 		moving_average[0] += ticks[i]->close;
 		j++;
 	}
 	moving_average[0] /= period;
+	j++;
 
 	for (i = 1; i < period; i++) {
 		moving_average[i] = ticks[j]->close * weight + moving_average[i-1]*(1-weight);
@@ -951,6 +957,16 @@ double *mma_interval_period(struct bittrex_info *bi, struct market *m, char *int
 	return moving_average;
 }
 
+int pumped(struct bittrex_info *bi, struct market *m) {
+	double *mma = NULL;
+
+	mma = ema_interval_period(bi, m, "Hour", 24);
+	//printf("%s, %.8f - %.8f\n", m->marketname, mma[23], mma[0]);
+	if (mma[23] > mma[0]*1.2) {
+		return 1;
+	}
+	return 0;
+}
 
 /*
  * FREE functions

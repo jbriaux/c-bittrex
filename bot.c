@@ -92,12 +92,15 @@ int bot(struct bittrex_info *bi) {
 	       MAX_ACTIVE_MARKETS);
 	for (i=0; i < bi->nbmarkets && nbm < MAX_ACTIVE_MARKETS; i++) {
 		if (strncmp("BTC-", bi->markets[i]->marketname, 4) == 0) {
-			worthm[nbm] = bi->markets[i];
-			worthm[nbm]->bot_rank = nbm;
-			nbm++;
+			if (!pumped(bi, bi->markets[i])) {
+				worthm[nbm] = bi->markets[i];
+				worthm[nbm]->bot_rank = nbm;
+				nbm++;
+			} else {
+				printf("Market: %s pumped recently, ignoring\n", bi->markets[i]->marketname);
+			}
 		}
 	}
-
 	worthm[nbm] = NULL;
 	if (worthm[0] == NULL) {
 		worthm[1] = NULL;
@@ -273,7 +276,7 @@ static struct trade *unprocessed_order(MYSQL *connector, struct market *m,
 	unsigned long *len;
 	struct trade *t = NULL;
 
-	query = malloc(strlen("SELECT * FROM Orders WHERE BotState = 'pending'")+
+	query = malloc(strlen("SELECT * FROM Orders WHERE BotState = 'pending' ")+
 		       strlen("AND Market = '' AND BotType = '';") +
 		       strlen(type) + strlen(m->marketname) + 1 );
 

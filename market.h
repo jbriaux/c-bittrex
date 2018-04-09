@@ -229,6 +229,11 @@ struct tick **getticks_rsi_mma_interval_period(struct bittrex_info *bi,
 					       char *interval,
 					       int period);
 
+/*
+ * If price increased more than 20% on last 24h
+ * Consider the coin has been pumped
+ */
+int pumped(struct bittrex_info *bi, struct market *m);
 
 /*
  * Free functions
