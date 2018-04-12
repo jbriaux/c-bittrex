@@ -19,6 +19,7 @@ What's left to do:
 - add a new call : --volumeonrange start_date end_date (buy and sell detailed volumes)
 - valgrind the bot: partially done (small leak somewhere but in libjanson, i'll try to update as I am using an old version)
 - about to add --getcsv with indicators (debug in progress) (for later use in ML)
+- bug found: the MySQL connector timesout after a while, need to fix this.
 
 Fixed or added recently:
 -------------
