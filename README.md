@@ -16,9 +16,9 @@ So if a long term opportunity shows up you can get an email without checking all
 Todo
 -------------
 What's left to do:
-- add a makefile and automatic tests (tests added)
 - add a new call : --volumeonrange start_date end_date (buy and sell detailed volumes)
-- now that the bot can be exited from input, valgrind the bot.
+- valgrind the bot: partially done (small leak somewhere but in libjanson, i'll try to update as I am using an old version)
+- about to add --getcsv with indicators (debug in progress) (for later use in ML)
 
 Fixed or added recently:
 -------------
